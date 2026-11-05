@@ -1,0 +1,22 @@
+# Ambiente / segredos
+.env
+
+# IDEs
+.idea/
+.vscode/
+
+# Arquivos/diretórios de uso local — nunca versionar (ver CLAUDE.md)
+_*
+# ...mas não `__init__.py` (Python), que também começa com "_"
+!**/__init__.py
+
+# PDFs gerados/baixados localmente
+*.pdf
+
+# Python
+venv/
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+staticfiles/
