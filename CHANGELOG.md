@@ -52,3 +52,11 @@ Trabalho). Mais recente por último dentro de cada branch.
   recusado sem `JWT_PUBLIC_KEY`.
 - `.env.example` documenta as variáveis e como gerar um par de chaves de
   desenvolvimento (arquivos com prefixo `_`, fora do git).
+- **Diretor da Tática acessa o financeiro (D-30).** O Diretor passa a ser
+  o papel dos donos de cada empresa, inclusive da Tática. Em
+  `AcessoFinanceiro`, o Diretor da empresa interna vê e altera,
+  independentemente do setor. O Diretor de empresa cliente continua sem
+  acesso, porque os dados são da conta Omie da Tática (D-10). Testes: perfil
+  `diretor_tatica` (sem marcador de setor financeiro) passa a receber 200
+  com `pode_alterar: true`; perfil novo `diretor_cliente` recebe 403 (53
+  testes).

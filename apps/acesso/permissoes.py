@@ -1,5 +1,5 @@
 """
-Quem acessa o módulo Financeiro (wiki: Papéis, D-18, D-23, RF-08).
+Quem acessa o módulo Financeiro (wiki: Papéis, D-18, D-23, D-30, RF-08).
 
 Ponto ÚNICO de checagem de permissão do serviço — toda regra de acesso
 mora aqui, para adaptar num lugar só quando o login novo do forms-meta
@@ -9,9 +9,14 @@ mudar (D-27). As informações vêm das claims do JWT (D-26), lidas via
 | Quem                                                  | Lê | Altera |
 |-------------------------------------------------------|----|--------|
 | ADM                                                   | ✔  | ✔      |
+| DIRETOR da empresa interna (donos da Tática)           | ✔  | ✔      |
 | GERENTE do setor financeiro da empresa interna         | ✔  | ✔      |
 | COLABORADOR do setor financeiro da empresa interna     | ✔  | ✘      |
-| qualquer outro (DIRETOR, outros setores, clientes)     | ✘  | ✘      |
+| qualquer outro (outros setores, empresas clientes)     | ✘  | ✘      |
+
+O Diretor de empresa cliente fica de fora: os dados aqui são da conta Omie
+da Tática (D-10), e o dono de um cliente não pode ver as finanças da
+Tática.
 """
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -41,13 +46,16 @@ def pode_ver_financeiro(usuario) -> bool:
     papel = getattr(usuario, 'papel', None)
     if papel == ADM:
         return True
+    if papel == DIRETOR:
+        # Dono da Tática vê a empresa inteira, qualquer que seja o setor dele.
+        return _claim_verdadeira(usuario, 'empresa_interna')
     return papel in (GERENTE, COLABORADOR) and _e_equipe_financeira(usuario)
 
 
 def pode_alterar_financeiro(usuario) -> bool:
     if not pode_ver_financeiro(usuario):
         return False
-    return getattr(usuario, 'papel', None) in (ADM, GERENTE)
+    return getattr(usuario, 'papel', None) in (ADM, DIRETOR, GERENTE)
 
 
 class AcessoFinanceiro(BasePermission):

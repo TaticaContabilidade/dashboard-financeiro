@@ -26,8 +26,8 @@ def _permite(perfil, metodo):
 
 
 @pytest.mark.parametrize('metodo', ['post', 'put', 'patch', 'delete'])
-@pytest.mark.parametrize('perfil', ['adm', 'gerente_financeiro'])
-def test_adm_e_gerente_financeiro_podem_alterar(perfil, metodo):
+@pytest.mark.parametrize('perfil', ['adm', 'diretor_tatica', 'gerente_financeiro'])
+def test_adm_diretor_tatica_e_gerente_financeiro_podem_alterar(perfil, metodo):
     assert _permite(perfil, metodo) is True
 
 
@@ -43,7 +43,7 @@ def test_colaborador_financeiro_pode_ler(metodo):
 
 @pytest.mark.parametrize('metodo', ['get', 'post'])
 @pytest.mark.parametrize(
-    'perfil', ['diretor_tatica', 'gerente_outro_setor_tatica', 'gerente_financeiro_cliente', 'colaborador_cliente']
+    'perfil', ['diretor_cliente', 'gerente_outro_setor_tatica', 'gerente_financeiro_cliente', 'colaborador_cliente']
 )
 def test_demais_papeis_nem_leem_nem_alteram(perfil, metodo):
     assert _permite(perfil, metodo) is False

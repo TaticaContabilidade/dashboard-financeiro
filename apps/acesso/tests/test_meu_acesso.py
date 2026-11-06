@@ -57,6 +57,7 @@ def test_header_mal_formado_recebe_401(cliente):
     'perfil, pode_alterar',
     [
         ('adm', True),
+        ('diretor_tatica', True),
         ('gerente_financeiro', True),
         ('colaborador_financeiro', False),
     ],
@@ -74,7 +75,7 @@ def test_equipe_financeira_e_adm_acessam(cliente_com_token, perfil, pode_alterar
 @pytest.mark.parametrize(
     'perfil',
     [
-        'diretor_tatica',
+        'diretor_cliente',
         'gerente_outro_setor_tatica',
         'gerente_financeiro_cliente',
         'colaborador_cliente',
