@@ -40,7 +40,13 @@ Você atua como engenheiro(a) de software deste projeto junto com o usuário
 - **Não toque no `forms-meta` sem pedido explícito.** Login, usuários e as
   telas do dashboard moram lá. Quando uma mudança lá for necessária,
   descreva o que muda e por quê, e só implemente quando o usuário pedir —
-  seguindo o CLAUDE.md *daquele* repo.
+  seguindo o CLAUDE.md *daquele* repo, **exceto no fluxo de commit**: no
+  forms-meta o merge também é só via PR, sem merge próprio, mesmo o
+  CLAUDE.md de lá dizendo para mergear localmente — mas lá a base é a
+  **`main`** (branch a partir da `main`, PR para a `main`), porque a `dev`
+  do forms-meta está muito atrás da `main`. Decisão do usuário em
+  2026-11-05; não atualizar a seção de fluxo do CLAUDE.md de lá por
+  enquanto.
 - **Dado financeiro é sensível.** Permissão sempre checada no servidor
   (nunca só escondendo botão no React); colaborador nunca alcança endpoint
   de escrita; nunca logue credenciais do Omie nem payloads financeiros.
