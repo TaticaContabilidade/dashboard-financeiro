@@ -60,3 +60,45 @@ Trabalho). Mais recente por último dentro de cada branch.
   `diretor_tatica` (sem marcador de setor financeiro) passa a receber 200
   com `pode_alterar: true`; perfil novo `diretor_cliente` recebe 403 (53
   testes).
+
+## Alterações branch feat/estrutura-multiempresa
+
+### 2026-11-09
+
+Estrutura para o financeiro **multiempresa** (D-32): cada empresa cliente
+acessa os dados do **próprio** Omie. Fica pronta a fundação; a
+sincronização e as telas vêm depois. Branch empilhada sobre
+`feat/estrutura-backend` (PR #1).
+
+- **Regra de acesso** (`apps/acesso/permissoes.py`): deixa de depender de
+  `empresa_interna`. Na própria empresa: ADM (só o desenvolvedor, D-31) e
+  Diretor (donos) leem e alteram em qualquer setor; Gerente do setor
+  financeiro lê e altera; Colaborador do setor financeiro só lê. Token sem
+  `empresa_id` inteiro e positivo é recusado (não dá para escopar os
+  dados) — inclusive `true`, que em Python é `int`.
+- **Trava de empresa** (`apps/acesso/escopo.py`): `empresa_da_requisicao`
+  decide de qual empresa são os dados — a do token; só o ADM escolhe outra
+  com `?empresa_id=`. Não-ADM pedindo outra empresa recebe 403 (nunca é
+  ignorado em silêncio). `EscopoEmpresaMixin` aplica isso em
+  `get_queryset()` e grava a empresa no `perform_create()`, ignorando o
+  body.
+- **Base dos models** (`apps/core/models.py`): `ModeloDaEmpresa` (abstrato,
+  `empresa_id` indexado, sem FK porque as empresas moram no banco do
+  forms-meta) e `EscopoEmpresaQuerySet.da_empresa(id)`, que falha alto com
+  `None` em vez de devolver vazio.
+- **Conta Omie por empresa** (`apps/omie`): model `ContaOmie` (1 por
+  empresa, tabela `omie_contas`) com `app_key`/`app_secret` cifrados com
+  Fernet (`apps/omie/cifra.py`). A chave vem de `OMIE_CREDENCIAIS_CHAVE`
+  (nunca do banco), aceita rotação com várias chaves e só é exigida quando
+  uma credencial é usada. `repr`/`str` não mostram credenciais.
+  - Comando `configurar_conta_omie` (credenciais pedidas sem eco, nunca por
+    argumento) e `recifrar_contas_omie` (rotação de chave).
+  - Migration `omie/0001_initial`.
+- `meu-acesso` passa a devolver também o `empresa_id`.
+- `OMIE_APP_KEY`/`OMIE_APP_SECRET` saem do `.env.example`: as credenciais
+  agora são por empresa, no banco. Entra `OMIE_CREDENCIAIS_CHAVE`.
+- Testes: 118 passando — regra de acesso multiempresa, trava de empresa
+  (direto e numa view de exemplo com o mixin), criptografia (ida e volta,
+  chave errada, rotação), credenciais cifradas no banco (conferido na
+  coluna bruta), uma conta por empresa e os dois comandos. Prova de
+  sabotagem: liberar outra empresa para qualquer papel quebra 3 testes.

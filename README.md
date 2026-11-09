@@ -37,4 +37,19 @@ A suíte gera o próprio par de chaves RS256 a cada execução
 | Método | Rota | Acesso |
 |--------|------|--------|
 | GET | `/api/health/` | Público (health check do Render) |
-| GET | `/api/financeiro/meu-acesso/` | Equipe financeira e ADM — diz se o usuário pode alterar |
+| GET | `/api/financeiro/meu-acesso/` | Quem acessa o financeiro — diz a empresa e se o usuário pode alterar |
+
+## Multiempresa
+
+Cada empresa vê só os próprios dados financeiros, vindos do próprio Omie
+(wiki: Multiempresa). Todo model de dado financeiro herda de
+`apps.core.models.ModeloDaEmpresa` e toda view usa
+`apps.acesso.escopo.EscopoEmpresaMixin`.
+
+## Comandos
+
+| Comando | O que faz |
+|---------|-----------|
+| `manage.py configurar_conta_omie --empresa-id N` | Cadastra/troca as credenciais Omie da empresa (pedidas sem eco) |
+| `manage.py configurar_conta_omie --empresa-id N --desativar` | Desliga a sincronização da empresa sem apagar as credenciais |
+| `manage.py recifrar_contas_omie` | Recifra todas as credenciais com a chave mais nova (rotação) |
