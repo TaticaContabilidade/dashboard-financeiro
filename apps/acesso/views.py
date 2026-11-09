@@ -20,6 +20,7 @@ class MeuAcessoView(APIView):
         return Response(
             {
                 'user_id': usuario.id,
+                'empresa_id': usuario.empresa_id,
                 'papel': usuario.papel,
                 'pode_ver': True,
                 'pode_alterar': pode_alterar_financeiro(usuario),
