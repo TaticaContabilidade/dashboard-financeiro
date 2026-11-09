@@ -12,6 +12,7 @@ verificador de token uma única vez, na importação.
 
 import os
 
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -31,5 +32,8 @@ os.environ['JWT_PUBLIC_KEY'] = (
     )
     .decode()
 )
+
+# Chave Fernet descartável para as credenciais Omie nos testes.
+os.environ['OMIE_CREDENCIAIS_CHAVE'] = Fernet.generate_key().decode()
 
 from .settings import *  # noqa: E402,F401,F403
