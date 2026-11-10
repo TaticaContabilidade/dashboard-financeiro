@@ -15,9 +15,9 @@ Precisa de Docker e Python 3.12.
 ```bash
 cp .env.example .env            # e preencha JWT_PUBLIC_KEY (instruções no arquivo)
 docker compose up -d db         # Postgres em localhost:5436
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
-venv/bin/python manage.py migrate
-venv/bin/python manage.py runserver 8001
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py runserver 8001
 ```
 
 Ou tudo em container: `docker compose up --build` (API em `localhost:8001`).
@@ -26,7 +26,7 @@ Ou tudo em container: `docker compose up --build` (API em `localhost:8001`).
 
 ```bash
 docker compose up -d db
-venv/bin/pytest
+.venv/bin/pytest
 ```
 
 A suíte gera o próprio par de chaves RS256 a cada execução
@@ -53,3 +53,4 @@ Cada empresa vê só os próprios dados financeiros, vindos do próprio Omie
 | `manage.py configurar_conta_omie --empresa-id N` | Cadastra/troca as credenciais Omie da empresa (pedidas sem eco) |
 | `manage.py configurar_conta_omie --empresa-id N --desativar` | Desliga a sincronização da empresa sem apagar as credenciais |
 | `manage.py recifrar_contas_omie` | Recifra todas as credenciais com a chave mais nova (rotação) |
+| `manage.py testar_conta_omie --empresa-id N` | Testa a conexão com o Omie da empresa e mostra só contagens e estrutura dos dados (sem valores) |

@@ -102,3 +102,48 @@ sincronização e as telas vêm depois. Branch empilhada sobre
   chave errada, rotação), credenciais cifradas no banco (conferido na
   coluna bruta), uma conta por empresa e os dois comandos. Prova de
   sabotagem: liberar outra empresa para qualquer papel quebra 3 testes.
+
+## Alterações branch feat/cliente-omie
+
+### 2026-11-10
+
+Cliente HTTP da API do Omie e comando de teste com uma conta real (wiki:
+Integração Omie).
+
+- **`apps/omie/cliente.py` — `ClienteOmie`:** `chamar()` faz o POST JSON
+  (`call`, `app_key`, `app_secret`, `param`) e `listar()` percorre as
+  páginas (campos de página configuráveis, porque o `ListarMovimentos` usa
+  `nPagina`/`nRegPorPagina`/`nTotPaginas`). Atalhos para os métodos
+  mapeados: movimentos, contas a pagar/receber, contas correntes,
+  categorias, clientes e saldo (`ListarExtrato` só com saldos). "Não
+  existem registros" vira lista vazia. Log só com serviço, método, página,
+  status e duração — nunca credencial nem conteúdo. `repr` não mostra
+  credencial.
+- **Novas tentativas só para falha passageira de rede/5xx** (2, com espera
+  de 2 s e 5 s). Limite, consulta redundante, bloqueio (425), credencial e
+  erro permanente sobem como exceção na primeira vez: insistir aproxima o
+  bloqueio de 30 min que o Omie aplica depois de 10 erros.
+- **`apps/omie/erros.py`:** hierarquia de erros pelo que a sincronização
+  deve fazer (`ErroTransitorio`, `ErroLimite`, `ErroRedundante`,
+  `ErroBloqueio`, `ErroCredencial`, `ErroPermanente`) e `classificar()`.
+  Fault desconhecido cai em permanente (não insistir). Formato real de
+  credencial inválida confirmado com uma chamada ao Omie usando uma chave
+  inventada: HTTP 403, "A chave de acesso não está preenchida ou não é
+  válida.".
+- **`apps/omie/limitador.py`:** trava de taxa por janela deslizante de 60 s,
+  com 800/min por IP (Omie: 960, somando todas as empresas) e 200/min por
+  app_key + método (Omie: 240). A documentação não diz se a janela do Omie
+  é fixa ou deslizante; a deslizante é a mais restritiva, então serve para
+  as duas. Um limitador por processo.
+- **Comando `testar_conta_omie --empresa-id N`:** ~10 leituras que
+  respondem as pendências do mapeamento (tamanho máximo de página, regra
+  dos 30 dias no filtro de alteração, se `ListarMovimentos` traz natureza,
+  status, pagamento e conta corrente, campos de saldo). Imprime só
+  contagens, nomes de campos, tipos e nomes de status. O teste do comando
+  injeta valores sentinela (razão social, CNPJ, valores) e confere que
+  nenhum aparece na saída.
+- Dependência nova: `requests==2.33.1`.
+- README e `.env.example` passam a usar `.venv/` nos exemplos.
+- Testes: 152 passando (classificação de erros, janela deslizante, inclusive
+  "20 empresas somam no mesmo teto de IP", formato da chamada, paginação,
+  novas tentativas, nada de credencial no log, comando sem vazar valores).
