@@ -51,6 +51,12 @@ Você atua como engenheiro(a) de software deste projeto junto com o usuário
   (nunca só escondendo botão no React); colaborador nunca alcança endpoint
   de escrita; nunca logue credenciais do Omie nem payloads financeiros.
   Ver os RNF de segurança em `Requisitos-Não-Funcionais.md` (wiki).
+- **Multiempresa (D-32):** cada empresa só vê os próprios dados. Todo model
+  financeiro herda de `apps.core.models.ModeloDaEmpresa`, toda view sobre
+  eles usa `apps.acesso.escopo.EscopoEmpresaMixin`, unicidade sempre
+  composta com `empresa_id`, e toda view nova ganha um teste de vazamento
+  entre empresas. Nunca filtre por um `empresa_id` vindo do body/query sem
+  passar pela trava. Ver `Multiempresa.md` (wiki).
 - **Nunca confie no cliente:** totais, saldos e agregados calculados no
   servidor.
 - **Escrita no Omie é caso a caso.** Nenhuma operação que altera dado no

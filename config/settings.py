@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'apps.core',
     'apps.acesso',
+    'apps.omie',
 ]
 
 MIDDLEWARE = [
@@ -108,6 +109,11 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
+
+# Chave(s) Fernet que cifram as credenciais Omie de cada empresa no banco
+# (D-32). Várias separadas por vírgula = rotação (ver apps/omie/cifra.py).
+# Só é exigida quando uma credencial é gravada/lida.
+OMIE_CREDENCIAIS_CHAVE = os.environ.get('OMIE_CREDENCIAIS_CHAVE', '')
 
 # CORS — o React do forms-meta é outra origem.
 CORS_ALLOWED_ORIGINS = [
