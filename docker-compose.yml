@@ -1,0 +1,43 @@
+# Ambiente local: Postgres + backend. As portas 5434/5433 do host já são
+# usadas pelo forms-meta (dev/teste), por isso aqui é 5436 — os dois
+# projetos podem rodar ao mesmo tempo. O banco de teste do pytest
+# (test_dashboard_financeiro) é criado/dropado automaticamente nesse mesmo
+# Postgres pelo pytest-django.
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dashboard_financeiro
+    volumes:
+      - dashboard-financeiro-dev-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    # 8000 é do backend do forms-meta.
+    ports:
+      - "8001:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/dashboard_financeiro
+      DJANGO_DEBUG: "true"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+
+volumes:
+  dashboard-financeiro-dev-db:
