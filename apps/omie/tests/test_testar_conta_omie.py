@@ -11,11 +11,16 @@ from apps.omie.models import ContaOmie
 
 pytestmark = pytest.mark.django_db
 
-SENTINELAS = ['RAZAO-SENTINELA', '12345678000199', '987654.32', 'DESCRICAO-SENTINELA', 'BANCO-SENTINELA']
+SENTINELAS = [
+    'RAZAO-SENTINELA', '12345678000199', '987654.32', 'DESCRICAO-SENTINELA', 'BANCO-SENTINELA',
+    'TEXTO-LIVRE-SENTINELA-COMPRIDO-DEMAIS', '424242',
+]
 
 MOVIMENTO = {
     'detalhes': {
         'cNatureza': 'P', 'cStatus': 'PAGO', 'dDtEmissao': '01/01/2026', 'dDtPagamento': '05/01/2026',
+        'nCodTitulo': 424242, 'cGrupo': 'CONTA_A_PAGAR', 'cOrigem': 'TEXTO-LIVRE-SENTINELA-COMPRIDO-DEMAIS',
+        'cTipo': 'BOL',
         'nCodCC': 10, 'nValorTitulo': 987654.32, 'cCPFCNPJCliente': '12345678000199', 'observacao': 'RAZAO-SENTINELA',
     },
     'resumo': {'nValPago': 987654.32, 'cLiquidado': 'S'},
@@ -77,3 +82,20 @@ def test_credencial_recusada_interrompe(conta):
 def test_empresa_sem_conta():
     with pytest.raises(CommandError):
         call_command('testar_conta_omie', '--empresa-id', '99', stdout=StringIO())
+
+
+def test_etapa_8_conta_repeticoes_sem_mostrar_ids_nem_texto_livre(conta):
+    saida = _rodar(ClienteFalso())  # o ClienteFalso devolve o mesmo movimento 2x
+    assert 'nCodTitulo que aparecem mais de 1 vez: 1 (maior repetição: 2)' in saida
+    assert '  nCodTitulo: 2' in saida  # as 2 linhas colidem nessa chave
+    assert "por cGrupo: {'CONTA_A_PAGAR': 2}" in saida
+    assert "por cOrigem: {'<texto longo>': 2}" in saida
+    assert "('nValorTitulo', 'float'): 2" in saida
+    for valor in SENTINELAS:  # nem o id do título nem o texto livre aparecem
+        assert valor not in saida, valor
+
+
+def test_etapa_8_pula_sem_movimentos(conta):
+    cliente = ClienteFalso()
+    cliente.listar_movimentos = lambda *a, **k: iter([])
+    assert 'sem movimentos da etapa 4 — pulado' in _rodar(cliente)

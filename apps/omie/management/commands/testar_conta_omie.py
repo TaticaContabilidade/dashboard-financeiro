@@ -9,8 +9,9 @@ Imprime SÓ contagens, nomes de campos, tipos e nomes de status — nunca
 valores, nomes de clientes/fornecedores, CNPJ ou descrições (RNF-04). A
 saída pode ser colada na conversa/wiki sem expor dado financeiro.
 
-São ~10 chamadas ao Omie, todas de leitura, com parâmetros diferentes
-entre si (evita a regra de consulta repetida em < 60 s).
+São ~10 chamadas ao Omie (mais as páginas), todas de leitura, com
+parâmetros diferentes entre si (evita a regra de consulta repetida em
+< 60 s). A etapa 8 não chama o Omie: reaproveita os movimentos da etapa 4.
 """
 
 from collections import Counter
@@ -78,8 +79,10 @@ class Command(BaseCommand):
             ('5. Contas a pagar (1 registro, só estrutura)', self.contas_pagar),
             ('6. Saldos (ListarExtrato, 1ª conta ativa)', self.saldos),
             ('7. Categorias', self.categorias),
+            ('8. Chave única e tipos dos movimentos (reusa a etapa 4, sem chamar o Omie)', self.chave_movimentos),
         ]
         self.conta_corrente = None
+        self.movimentos_90 = None
         self.por_pagina = 100
         for titulo, etapa in etapas:
             self.stdout.write(self.style.MIGRATE_HEADING(f'\n{titulo}'))
@@ -158,6 +161,7 @@ class Command(BaseCommand):
     def regra_30_dias(self):
         filtros = {'dDtAltDe': _br(self.hoje - timedelta(days=90)), 'dDtAltAte': _br(self.hoje - timedelta(days=1))}
         lista = list(self.cliente.listar_movimentos(filtros, por_pagina=self.por_pagina))
+        self.movimentos_90 = lista
         limite = self.hoje - timedelta(days=30)
         emissoes = [_data_omie((m.get('detalhes') or {}).get('dDtEmissao')) for m in lista]
         antigos = sum(1 for e in emissoes if e and e < limite)
@@ -195,3 +199,70 @@ class Command(BaseCommand):
             f'total: {len(lista)} | receita: {sum(1 for c in lista if c.get("conta_receita") == "S")} '
             f'| despesa: {sum(1 for c in lista if c.get("conta_despesa") == "S")}'
         ])
+
+    def chave_movimentos(self):
+        """Responde, só com contagens: o `nCodTitulo` se repete? Que
+        combinação de campos identifica uma linha? Que códigos aparecem em
+        cGrupo/cOrigem/cTipo? Os valores vêm como int ou float?"""
+        if not self.movimentos_90:
+            self._linhas(['sem movimentos da etapa 4 — pulado'])
+            return
+        detalhes = [m.get('detalhes') or {} for m in self.movimentos_90]
+        resumos = [m.get('resumo') or {} for m in self.movimentos_90]
+        total = len(detalhes)
+
+        sem_titulo = sum(1 for d in detalhes if not d.get('nCodTitulo'))
+        por_titulo = Counter(d.get('nCodTitulo') for d in detalhes if d.get('nCodTitulo'))
+        repetidos = {cod: n for cod, n in por_titulo.items() if n > 1}
+        self._linhas([
+            f'linhas: {total} | sem nCodTitulo (0/vazio): {sem_titulo} | nCodTitulo distintos: {len(por_titulo)}',
+            f'nCodTitulo que aparecem mais de 1 vez: {len(repetidos)} '
+            f'(maior repetição: {max(repetidos.values()) if repetidos else 0})',
+        ])
+
+        # Candidatas a chave única: quantas linhas colidem em cada uma.
+        candidatas = {
+            'nCodTitulo': ('nCodTitulo',),
+            'nCodTitulo+cGrupo': ('nCodTitulo', 'cGrupo'),
+            'nCodTitulo+dDtPagamento': ('nCodTitulo', 'dDtPagamento'),
+            'nCodTitulo+cGrupo+dDtPagamento': ('nCodTitulo', 'cGrupo', 'dDtPagamento'),
+            'nCodTitulo+nCodCC+cGrupo+dDtPagamento': ('nCodTitulo', 'nCodCC', 'cGrupo', 'dDtPagamento'),
+        }
+        self._linhas(['linhas que colidem com outra em cada chave candidata (0 = chave única):'])
+        for nome, campos in candidatas.items():
+            chaves = Counter(tuple(d.get(c) for c in campos) for d in detalhes)
+            colisoes = sum(n for n in chaves.values() if n > 1)
+            self._linhas([f'  {nome}: {colisoes}'])
+
+        if repetidos:
+            linhas_rep = [d for d in detalhes if d.get('nCodTitulo') in repetidos]
+            self._linhas([
+                'nas linhas com nCodTitulo repetido:',
+                f'  por cGrupo: {dict(Counter(_codigo(d.get("cGrupo")) for d in linhas_rep))}',
+                f'  por cStatus: {dict(Counter(_codigo(d.get("cStatus")) for d in linhas_rep))}',
+                f'  com dDtPagamento: {sum(1 for d in linhas_rep if d.get("dDtPagamento"))}',
+            ])
+
+        self._linhas([
+            f'por cGrupo: {dict(Counter(_codigo(d.get("cGrupo")) for d in detalhes))}',
+            f'por cOrigem: {dict(Counter(_codigo(d.get("cOrigem")) for d in detalhes))}',
+            f'por cTipo: {dict(Counter(_codigo(d.get("cTipo")) for d in detalhes))}',
+            f'cGrupo x natureza: {dict(Counter((_codigo(d.get("cGrupo")), d.get("cNatureza")) for d in detalhes))}',
+            f'com nCodTitRepet (título recorrente): {sum(1 for d in detalhes if d.get("nCodTitRepet"))}',
+        ])
+
+        tipos = Counter()
+        for d, r in zip(detalhes, resumos):
+            for campo, valor in (('nValorTitulo', d.get('nValorTitulo')), ('nValPago', r.get('nValPago')),
+                                 ('nValAberto', r.get('nValAberto'))):
+                tipos[(campo, type(valor).__name__)] += 1
+        self._linhas([f'tipos dos valores: {dict(sorted(tipos.items()))}'])
+
+
+def _codigo(valor) -> str:
+    """Códigos curtos (ex.: CONTA_A_PAGAR, PAGO) passam; qualquer texto
+    comprido vira marcador, para um campo livre nunca vazar na saída."""
+    texto = '' if valor is None else str(valor)
+    if len(texto) > 25:
+        return '<texto longo>'
+    return texto

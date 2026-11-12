@@ -147,3 +147,16 @@ Integração Omie).
 - Testes: 152 passando (classificação de erros, janela deslizante, inclusive
   "20 empresas somam no mesmo teto de IP", formato da chamada, paginação,
   novas tentativas, nada de credencial no log, comando sem vazar valores).
+
+### 2026-11-12
+
+- **Teste real com a conta da Tática** (D-34 na wiki): página máxima de 100,
+  filtro `dDtAltDe` sem a regra dos 30 dias, `ListarMovimentos` serve como
+  fonte principal. A paginação do cliente leu as 74 páginas sem truncar.
+- **Etapa 8 no `testar_conta_omie`:** antes de fixar a chave única da tabela
+  de movimentos, conta (sem chamar o Omie de novo, reaproveitando a etapa 4)
+  quantos `nCodTitulo` se repetem, quantas linhas colidem em cada chave
+  candidata, os códigos de `cGrupo`/`cOrigem`/`cTipo` e se os valores vêm
+  como `int` ou `float`. Nunca imprime ids nem valores; código com mais de
+  25 caracteres vira `<texto longo>`, para um campo livre não vazar. Testes:
+  154 (conferido que o teste quebra se o filtro de texto for afrouxado).
