@@ -11,11 +11,13 @@ saída pode ser colada na conversa/wiki sem expor dado financeiro.
 
 São ~10 chamadas ao Omie (mais as páginas), todas de leitura, com
 parâmetros diferentes entre si (evita a regra de consulta repetida em
-< 60 s). A etapa 8 não chama o Omie: reaproveita os movimentos da etapa 4.
+< 60 s). As etapas 8 a 10 não chamam o Omie: reaproveitam os movimentos da
+etapa 4.
 """
 
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
@@ -80,6 +82,8 @@ class Command(BaseCommand):
             ('6. Saldos (ListarExtrato, 1ª conta ativa)', self.saldos),
             ('7. Categorias', self.categorias),
             ('8. Chave única e tipos dos movimentos (reusa a etapa 4, sem chamar o Omie)', self.chave_movimentos),
+            ('9. Identificador e campos por cGrupo (reusa a etapa 4, sem chamar o Omie)', self.campos_por_grupo),
+            ('10. Chave da conta corrente, baixas em lote e previsões (reusa a etapa 4)', self.conta_corrente_e_previsoes),
         ]
         self.conta_corrente = None
         self.movimentos_90 = None
@@ -257,6 +261,127 @@ class Command(BaseCommand):
                                  ('nValAberto', r.get('nValAberto'))):
                 tipos[(campo, type(valor).__name__)] += 1
         self._linhas([f'tipos dos valores: {dict(sorted(tipos.items()))}'])
+
+
+    def campos_por_grupo(self):
+        """A estrutura da etapa 3 é só do 1º movimento; aqui, para cada
+        cGrupo: que campos aparecem (e em quantas linhas), qual campo
+        `nCod*` identifica a linha sem colisão, e como os grupos se ligam
+        pelo nCodTitulo. Só nomes de campos e contagens."""
+        if not self.movimentos_90:
+            self._linhas(['sem movimentos da etapa 4 — pulado'])
+            return
+        grupos: dict[str, list[tuple[dict, dict]]] = {}
+        for m in self.movimentos_90:
+            d, r = m.get('detalhes') or {}, m.get('resumo') or {}
+            grupos.setdefault(_codigo(d.get('cGrupo')), []).append((d, r))
+
+        titulos_por_grupo = {
+            g: {d.get('nCodTitulo') for d, _ in linhas if d.get('nCodTitulo')} for g, linhas in grupos.items()
+        }
+        titulos_de_conta = titulos_por_grupo.get('CONTA_A_PAGAR', set()) | titulos_por_grupo.get('CONTA_A_RECEBER', set())
+
+        for grupo in sorted(grupos):
+            linhas = grupos[grupo]
+            self._linhas([f'{grupo}: {len(linhas)} linhas'])
+            for parte, indice in (('detalhes', 0), ('resumo', 1)):
+                presenca = Counter()
+                for par in linhas:
+                    presenca.update(k for k, v in par[indice].items() if v not in (None, '', 0))
+                todos = sorted({k for par in linhas for k in par[indice]})
+                self._linhas([f'  {parte} (campo: linhas com valor): '
+                              + ', '.join(f'{k}:{presenca[k]}' for k in todos)])
+            ids = sorted({k for d, _ in linhas for k in d if k.startswith('nCod')})
+            colisoes = []
+            for campo in ids:
+                valores = [d.get(campo) for d, _ in linhas if d.get(campo)]
+                contagem = Counter(valores)
+                colisoes.append(f'{campo}: preenchido {len(valores)}, colide {sum(n for n in contagem.values() if n > 1)}')
+            self._linhas(['  ids (preenchido / linhas que colidem): ' + ' | '.join(colisoes)])
+            if grupo not in ('CONTA_A_PAGAR', 'CONTA_A_RECEBER'):
+                proprios = titulos_por_grupo.get(grupo, set())
+                self._linhas([f'  nCodTitulo distintos: {len(proprios)} | também presentes em CONTA_A_*: '
+                              f'{len(proprios & titulos_de_conta)}'])
+        
+
+    def conta_corrente_e_previsoes(self):
+        """Fecha a chave das linhas de conta corrente (nCodBaixa quando é
+        baixa de título, nCodMovCC quando é lançamento direto), testa a
+        hipótese de baixa em lote (um movimento bancário pagando vários
+        títulos) e se a PREVISAO_CONTRATO convive com o título já faturado.
+        Só contagens."""
+        if not self.movimentos_90:
+            self._linhas(['sem movimentos da etapa 4 — pulado'])
+            return
+        linhas = [(m.get('detalhes') or {}, m.get('resumo') or {}) for m in self.movimentos_90]
+        cc = [(d, r) for d, r in linhas if d.get('cGrupo') in ('CONTA_CORRENTE_PAG', 'CONTA_CORRENTE_REC')]
+
+        def colisoes(chaves) -> int:
+            return sum(n for n in Counter(chaves).values() if n > 1)
+
+        sem_mov = [d for d, _ in cc if not d.get('nCodMovCC')]
+        self._linhas([
+            f'linhas de conta corrente: {len(cc)}',
+            f'colisões em cGrupo+nCodMovCC+nCodBaixa: '
+            f'{colisoes((d.get("cGrupo"), d.get("nCodMovCC") or 0, d.get("nCodBaixa") or 0) for d, _ in cc)}',
+            f'colisões em cGrupo + (nCodBaixa se houver, senão nCodMovCC): '
+            f'{colisoes((d.get("cGrupo"), ("B", d["nCodBaixa"]) if d.get("nCodBaixa") else ("M", d.get("nCodMovCC") or 0)) for d, _ in cc)}',
+            f'sem nCodMovCC: {len(sem_mov)} (com nCodBaixa: {sum(1 for d in sem_mov if d.get("nCodBaixa"))} '
+            f'| por cOrigem: {dict(Counter(_codigo(d.get("cOrigem")) for d in sem_mov))})',
+        ])
+
+        por_mov = defaultdict(list)
+        for d, r in cc:
+            if d.get('nCodMovCC'):
+                por_mov[(d.get('cGrupo'), d['nCodMovCC'])].append((d, r))
+        lotes = [v for v in por_mov.values() if len(v) > 1]
+        simples = [v[0] for v in por_mov.values() if len(v) == 1]
+        self._linhas([
+            f'nCodMovCC com mais de 1 linha (lote?): {len(lotes)} grupos, {sum(len(v) for v in lotes)} linhas',
+            f'  todas as linhas do grupo têm nCodBaixa: {sum(1 for v in lotes if all(d.get("nCodBaixa") for d, _ in v))}',
+            f'  nValorMovCC igual em todas as linhas do grupo: '
+            f'{sum(1 for v in lotes if len({_dec(d.get("nValorMovCC")) for d, _ in v}) == 1)}',
+            f'  soma dos nValPago == nValorMovCC: '
+            f'{sum(1 for v in lotes if _soma(r.get("nValPago") for _, r in v) == _dec(v[0][0].get("nValorMovCC")))}',
+            f'linhas sozinhas no nCodMovCC: {len(simples)} | nValPago == nValorMovCC: '
+            f'{sum(1 for d, r in simples if _dec(r.get("nValPago")) == _dec(d.get("nValorMovCC")))}',
+        ])
+
+        previsoes = [d for d, _ in linhas if d.get('cGrupo') == 'PREVISAO_CONTRATO']
+        receber = [d for d, _ in linhas if d.get('cGrupo') == 'CONTA_A_RECEBER' and d.get('nCodCtr')]
+        venc = [_data_omie(d.get('dDtVenc')) for d in previsoes]
+        por_mes = {(d['nCodCtr'], _mes(d.get('dDtVenc'))) for d in receber}
+        por_parcela = {(d['nCodCtr'], d.get('cNumParcela')) for d in receber}
+        self._linhas([
+            f'previsões de contrato: {len(previsoes)} | vencimento passado: {sum(1 for v in venc if v and v < self.hoje)} '
+            f'| hoje ou futuro: {sum(1 for v in venc if v and v >= self.hoje)}',
+            f'  por cStatus: {dict(Counter(_codigo(d.get("cStatus")) for d in previsoes))}',
+            f'  contratos distintos: {len({d.get("nCodCtr") for d in previsoes})} '
+            f'| contratos que também têm título a receber: '
+            f'{len({d.get("nCodCtr") for d in previsoes} & {d["nCodCtr"] for d in receber})}',
+            f'  previsões com título a receber do mesmo contrato no mesmo mês de vencimento: '
+            f'{sum(1 for d in previsoes if (d.get("nCodCtr"), _mes(d.get("dDtVenc"))) in por_mes)}',
+            f'  previsões com título a receber do mesmo contrato e mesma cNumParcela: '
+            f'{sum(1 for d in previsoes if (d.get("nCodCtr"), d.get("cNumParcela")) in por_parcela)}',
+        ])
+
+
+def _dec(valor) -> Decimal | None:
+    if valor is None or valor == '':
+        return None
+    try:
+        return Decimal(str(valor)).quantize(Decimal('0.01'))
+    except InvalidOperation:
+        return None
+
+
+def _soma(valores) -> Decimal:
+    return sum((_dec(v) or Decimal('0') for v in valores), Decimal('0'))
+
+
+def _mes(texto):
+    dia = _data_omie(texto)
+    return (dia.year, dia.month) if dia else None
 
 
 def _codigo(valor) -> str:

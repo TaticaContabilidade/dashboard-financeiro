@@ -160,3 +160,20 @@ Integração Omie).
   como `int` ou `float`. Nunca imprime ids nem valores; código com mais de
   25 caracteres vira `<texto longo>`, para um campo livre não vazar. Testes:
   154 (conferido que o teste quebra se o filtro de texto for afrouxado).
+
+## Alterações branch feat/teste-omie-etapas-9-10
+
+### 2026-11-18
+
+- **Etapas 9 e 10 no `testar_conta_omie`** (reaproveitam os movimentos da
+  etapa 4, sem nova chamada ao Omie; só nomes de campos e contagens):
+  - **9:** para cada `cGrupo`, os campos presentes em todas as linhas (a
+    etapa 3 só mostrava o 1º movimento), qual campo `nCod*` identifica a
+    linha sem colidir e quantos títulos das baixas/previsões existem em
+    `CONTA_A_*`.
+  - **10:** colisões da chave da conta corrente, hipótese de baixa em lote
+    (soma dos `nValPago` = `nValorMovCC`) e se a previsão de contrato
+    convive com o título já faturado.
+- Resultado com a conta da Tática fixou as chaves e as regras de cálculo
+  (D-36 na wiki). Testes: 156 (incluindo que ids, contratos e parcelas
+  nunca aparecem na saída).

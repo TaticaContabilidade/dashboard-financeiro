@@ -99,3 +99,42 @@ def test_etapa_8_pula_sem_movimentos(conta):
     cliente = ClienteFalso()
     cliente.listar_movimentos = lambda *a, **k: iter([])
     assert 'sem movimentos da etapa 4 — pulado' in _rodar(cliente)
+
+
+def test_etapa_9_campos_e_ids_por_grupo_sem_valores(conta):
+    baixa = {
+        'detalhes': {'cGrupo': 'CONTA_CORRENTE_PAG', 'nCodTitulo': 424242, 'nCodMovCC': 777001,
+                     'observacao': 'RAZAO-SENTINELA'},
+        'resumo': {'nValPago': 987654.32},
+    }
+    cliente = ClienteFalso()
+    cliente.listar_movimentos = lambda *a, **k: iter([MOVIMENTO, baixa, {**baixa}])
+    saida = _rodar(cliente)
+    assert 'CONTA_CORRENTE_PAG: 2 linhas' in saida
+    assert 'nCodMovCC: preenchido 2, colide 2' in saida
+    assert 'nCodTitulo distintos: 1 | também presentes em CONTA_A_*: 1' in saida
+    assert 'observacao:2' in saida  # nome do campo e contagem, nunca o conteúdo
+    for valor in SENTINELAS + ['777001']:
+        assert valor not in saida, valor
+
+
+def test_etapa_10_lote_chave_e_previsoes_so_contagens(conta):
+    def cc(baixa, titulo, pago):
+        return {'detalhes': {'cGrupo': 'CONTA_CORRENTE_PAG', 'nCodMovCC': 777001, 'nCodBaixa': baixa,
+                             'nCodTitulo': titulo, 'nValorMovCC': 987654.32},
+                'resumo': {'nValPago': pago}}
+    lote = [cc(5001, 424242, 900000), cc(5002, 424243, 87654.32)]  # soma = nValorMovCC
+    previsao = {'detalhes': {'cGrupo': 'PREVISAO_CONTRATO', 'nCodCtr': 31337, 'nCodTitulo': 9,
+                             'cNumParcela': '001/012', 'dDtVenc': '10/01/2026', 'cStatus': 'PREVISAO'}, 'resumo': {}}
+    titulo = {'detalhes': {'cGrupo': 'CONTA_A_RECEBER', 'nCodCtr': 31337, 'nCodTitulo': 10,
+                           'cNumParcela': '001/012', 'dDtVenc': '15/01/2026'}, 'resumo': {}}
+    cliente = ClienteFalso()
+    cliente.listar_movimentos = lambda *a, **k: iter([*lote, previsao, titulo])
+    saida = _rodar(cliente)
+    assert 'colisões em cGrupo+nCodMovCC+nCodBaixa: 0' in saida
+    assert 'nCodMovCC com mais de 1 linha (lote?): 1 grupos, 2 linhas' in saida
+    assert '  soma dos nValPago == nValorMovCC: 1' in saida
+    assert 'previsões com título a receber do mesmo contrato no mesmo mês de vencimento: 1' in saida
+    assert 'previsões com título a receber do mesmo contrato e mesma cNumParcela: 1' in saida
+    for valor in SENTINELAS + ['777001', '5001', '31337', '001/012']:
+        assert valor not in saida, valor
