@@ -34,6 +34,11 @@ class ClienteFalso:
     def chamar(self, servico, metodo, param):
         if metodo == 'ListarMovimentos':
             return {'movimentos': [MOVIMENTO] * 2, 'nRegistros': 2, 'nTotRegistros': 2, 'nTotPaginas': 1}
+        if metodo == 'ListarClientes':
+            return {'total_de_registros': 1, 'clientes_cadastro': [{
+                'codigo_cliente_omie': 424242, 'razao_social': 'RAZAO-SENTINELA', 'nome_fantasia': 'RAZAO-SENTINELA',
+                'cnpj_cpf': '12345678000199', 'inativo': 'N',
+            }]}
         if metodo == 'ListarContasPagar':
             return {'total_de_registros': 1, 'conta_pagar_cadastro': [{'valor_documento': 987654.32}]}
         raise AssertionError(metodo)
@@ -137,4 +142,30 @@ def test_etapa_10_lote_chave_e_previsoes_so_contagens(conta):
     assert 'previsões com título a receber do mesmo contrato no mesmo mês de vencimento: 1' in saida
     assert 'previsões com título a receber do mesmo contrato e mesma cNumParcela: 1' in saida
     for valor in SENTINELAS + ['777001', '5001', '31337', '001/012']:
+        assert valor not in saida, valor
+
+
+def test_etapa_11_confere_conversao_dos_cadastros_sem_nomes(conta):
+    saida = _rodar(ClienteFalso())
+    assert 'clientes/fornecedores na conta: 1 (amostra de 1)' in saida
+    assert 'cnpj_cpf: str' in saida  # nome do campo aparece; o CNPJ, não
+    assert 'clientes/fornecedores (amostra): 1 | convertidos: 1 | ignorados: {}' in saida
+    assert "categorias: 1 | convertidos: 0 | ignorados: {'categoria sem codigo': 1}" in saida
+    assert 'contas correntes: 1 | convertidos: 1' in saida
+    for valor in SENTINELAS:
+        assert valor not in saida, valor
+
+
+def test_etapa_11_mede_lancamentos_em_contas_fora_do_fluxo(conta):
+    cliente = ClienteFalso()
+    cliente.listar_contas_correntes = lambda *a, **k: iter([
+        {'nCodCC': 10, 'descricao': 'BANCO-SENTINELA', 'inativo': 'N', 'nao_fluxo': 'S'},
+        {'nCodCC': 11, 'descricao': 'BANCO-SENTINELA', 'inativo': 'N', 'nao_fluxo': 'N'},
+    ])
+    lancamento = {'detalhes': {'cGrupo': 'CONTA_CORRENTE_PAG', 'nCodMovCC': 1, 'nCodCC': 10}, 'resumo': {}}
+    cliente.listar_movimentos = lambda *a, **k: iter([lancamento, {**lancamento}])
+    saida = _rodar(cliente)
+    assert "contas por marcação: {'fora/ativa': 1, 'no fluxo/ativa': 1}" in saida
+    assert "por marcação da conta: {'fora do fluxo, ativa': 2}" in saida
+    for valor in SENTINELAS:
         assert valor not in saida, valor

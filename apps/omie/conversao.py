@@ -16,7 +16,15 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from apps.financeiro.models import LancamentoConta, Natureza, Titulo
+from apps.financeiro.models import (
+    Categoria,
+    ClienteFornecedor,
+    ContaCorrente,
+    LancamentoConta,
+    Natureza,
+    SaldoConta,
+    Titulo,
+)
 
 CENTAVO = Decimal('0.01')
 
@@ -122,6 +130,79 @@ def _lancamento(natureza: str, d: dict, r: dict) -> Convertido:
         },
     )
 
+
+# --- cadastros e saldos -----------------------------------------------------
+# Só os campos que as tabelas guardam: CPF/CNPJ, endereço, contato e dados
+# bancários do Omie são descartados aqui (D-38).
+
+def converter_conta_corrente(conta: dict) -> Convertido:
+    codigo = _inteiro(conta.get('nCodCC'))
+    if not codigo:
+        raise LinhaIgnorada('conta corrente sem nCodCC')
+    return Convertido(
+        modelo=ContaCorrente,
+        chave={'codigo': codigo},
+        campos={
+            'descricao': _texto(conta.get('descricao'), 100),
+            'tipo': _texto(_primeiro(conta.get('tipo_conta_corrente'), conta.get('tipo')), 30),
+            'codigo_banco': _texto(conta.get('codigo_banco'), 10),
+            'ativa': conta.get('inativo') != 'S',
+            'fora_do_fluxo': conta.get('nao_fluxo') == 'S',
+            'saldo_inicial': _valor(conta.get('saldo_inicial')),
+            'data_saldo_inicial': _data(conta.get('saldo_data')),
+        },
+    )
+
+
+def converter_categoria(categoria: dict) -> Convertido:
+    codigo = _texto(categoria.get('codigo'), 30)
+    if not codigo:
+        raise LinhaIgnorada('categoria sem codigo')
+    return Convertido(
+        modelo=Categoria,
+        chave={'codigo': codigo},
+        campos={
+            'descricao': _texto(categoria.get('descricao'), 120),
+            'codigo_superior': _texto(categoria.get('categoria_superior'), 30),
+            'receita': categoria.get('conta_receita') == 'S',
+            'despesa': categoria.get('conta_despesa') == 'S',
+        },
+    )
+
+
+def converter_cliente(cliente: dict) -> Convertido:
+    codigo = _inteiro(cliente.get('codigo_cliente_omie'))
+    if not codigo:
+        raise LinhaIgnorada('cliente/fornecedor sem codigo_cliente_omie')
+    return Convertido(
+        modelo=ClienteFornecedor,
+        chave={'codigo': codigo},
+        campos={
+            'razao_social': _texto(cliente.get('razao_social'), 150),
+            'nome_fantasia': _texto(cliente.get('nome_fantasia'), 150),
+            'ativo': cliente.get('inativo') != 'S',
+        },
+    )
+
+
+def converter_saldo(resposta: dict, codigo_conta: int, dia: date) -> Convertido:
+    """Resposta do `ListarExtrato` (só saldos) de UMA conta num dia. A conta
+    e o dia vêm de quem pediu, não da resposta: é o que foi consultado."""
+    if not codigo_conta:
+        raise LinhaIgnorada('saldo sem conta corrente')
+    return Convertido(
+        modelo=SaldoConta,
+        chave={'codigo_conta_corrente': int(codigo_conta), 'data': dia},
+        campos={
+            'saldo_atual': _valor(resposta.get('nSaldoAtual')),
+            'saldo_atual_previsto': _valor(resposta.get('nSaldoAtualPrevisto')),
+            'saldo_anterior': _valor(resposta.get('nSaldoAnterior')),
+            'saldo_conciliado': _valor(resposta.get('nSaldoConciliado')),
+            'saldo_disponivel': _valor(resposta.get('nSaldoDisponivel')),
+            'saldo_provisorio': _valor(resposta.get('nSaldoProvisorio')),
+            'limite_credito': _valor(resposta.get('nLimiteCreditoTotal')),
+        },
+    )
 
 # --- conversões de campo -----------------------------------------------------
 

@@ -204,3 +204,35 @@ Integração Omie).
   `LinhaIgnorada` com motivo seguro para log (sem valor do Omie).
 - Testes: 192 (36 novos). Conferido que quebram se a trava de empresa da
   regra da previsão for removida e se o lançamento usar `nValorMovCC`.
+
+## Alterações branch feat/cadastros-saldos-execucoes
+
+### 2026-11-18
+
+- **Cadastros** (`apps.financeiro`, todos com unicidade `empresa_id + codigo`):
+  `ContaCorrente` (`financeiro_contas_correntes`, com `fora_do_fluxo` vindo
+  do `nao_fluxo`), `Categoria` (`financeiro_categorias`) e
+  `ClienteFornecedor` (`financeiro_clientes_fornecedores`). Por minimização
+  (D-38) não guardam CPF/CNPJ, endereço, contato, agência nem número de
+  conta: só o necessário para mostrar nomes no dashboard.
+- **Saldos:** `SaldoConta` (`financeiro_saldos`), um registro por conta por
+  dia (`empresa_id + codigo_conta_corrente + data`), com os campos do
+  `ListarExtrato` confirmados no teste real.
+- **Execuções da sincronização:** `ExecucaoSincronizacao` (`omie_execucoes`)
+  com tipo, situação, período pedido ao Omie (`alterados_desde/ate`),
+  contagens e erro. `ultima_bem_sucedida()` dá o ponto de corte e o
+  "atualizado há X min"; execução com erro nunca avança o corte (RNF-11).
+- **Conversões** em `apps/omie/conversao.py` para conta corrente,
+  categoria, cliente/fornecedor e saldo.
+- **Etapa 11 do `testar_conta_omie`:** os campos de categoria e de cliente
+  vieram só da documentação; a etapa converte os cadastros reais e mostra
+  quantos converteram e quais campos ficaram preenchidos (só contagens e
+  nomes de campos; 1 chamada nova, amostra de 50 clientes).
+- Testes: 213 (21 novos). Conferido que quebram se a conversão do cliente
+  guardar o CNPJ e se o ponto de corte considerar execução com erro.
+- **Etapa 11 rodada com a conta da Tática:** contas correntes 13/13,
+  categorias 280/280 e amostra de 50 clientes 50/50 convertidos, sem
+  ignorados; nomes de campos confirmados. Porém `nao_fluxo = S` em 11 das
+  13 contas: a etapa 11 passa a contar quantos lançamentos de conta
+  corrente caem em contas marcadas "fora do fluxo", antes de usarmos a
+  marcação como filtro. Testes: 214.
