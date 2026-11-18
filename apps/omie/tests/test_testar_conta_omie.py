@@ -154,3 +154,18 @@ def test_etapa_11_confere_conversao_dos_cadastros_sem_nomes(conta):
     assert 'contas correntes: 1 | convertidos: 1' in saida
     for valor in SENTINELAS:
         assert valor not in saida, valor
+
+
+def test_etapa_11_mede_lancamentos_em_contas_fora_do_fluxo(conta):
+    cliente = ClienteFalso()
+    cliente.listar_contas_correntes = lambda *a, **k: iter([
+        {'nCodCC': 10, 'descricao': 'BANCO-SENTINELA', 'inativo': 'N', 'nao_fluxo': 'S'},
+        {'nCodCC': 11, 'descricao': 'BANCO-SENTINELA', 'inativo': 'N', 'nao_fluxo': 'N'},
+    ])
+    lancamento = {'detalhes': {'cGrupo': 'CONTA_CORRENTE_PAG', 'nCodMovCC': 1, 'nCodCC': 10}, 'resumo': {}}
+    cliente.listar_movimentos = lambda *a, **k: iter([lancamento, {**lancamento}])
+    saida = _rodar(cliente)
+    assert "contas por marcação: {'fora/ativa': 1, 'no fluxo/ativa': 1}" in saida
+    assert "por marcação da conta: {'fora do fluxo, ativa': 2}" in saida
+    for valor in SENTINELAS:
+        assert valor not in saida, valor

@@ -413,6 +413,30 @@ class Command(BaseCommand):
                 f'  campos preenchidos: {dict(sorted(preenchidos.items()))}',
             ])
 
+        # nao_fluxo marcado em quase todas as contas da Tática: antes de usar
+        # como filtro, quanto do fluxo realizado ele tiraria?
+        contas = {}
+        for item in self.contas_lista:
+            try:
+                c = converter_conta_corrente(item)
+            except LinhaIgnorada:
+                continue
+            contas[c.chave['codigo']] = (c.campos['fora_do_fluxo'], c.campos['ativa'])
+        if contas and self.movimentos_90:
+            por_marca = Counter()
+            for m in self.movimentos_90:
+                d = m.get('detalhes') or {}
+                if d.get('cGrupo') not in ('CONTA_CORRENTE_PAG', 'CONTA_CORRENTE_REC'):
+                    continue
+                fora, ativa = contas.get(d.get('nCodCC'), (None, None))
+                rotulo = 'conta desconhecida' if fora is None else (
+                    f'{"fora do fluxo" if fora else "no fluxo"}, {"ativa" if ativa else "inativa"}')
+                por_marca[rotulo] += 1
+            self._linhas([
+                f'contas por marcação: {dict(Counter(f"{"fora" if f else "no fluxo"}/{"ativa" if a else "inativa"}" for f, a in contas.values()))}',
+                f'lançamentos de conta corrente (90 dias) por marcação da conta: {dict(por_marca)}',
+            ])
+
 
 def _dec(valor) -> Decimal | None:
     if valor is None or valor == '':

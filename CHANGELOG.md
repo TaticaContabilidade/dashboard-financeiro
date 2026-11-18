@@ -230,3 +230,9 @@ Integração Omie).
   nomes de campos; 1 chamada nova, amostra de 50 clientes).
 - Testes: 213 (21 novos). Conferido que quebram se a conversão do cliente
   guardar o CNPJ e se o ponto de corte considerar execução com erro.
+- **Etapa 11 rodada com a conta da Tática:** contas correntes 13/13,
+  categorias 280/280 e amostra de 50 clientes 50/50 convertidos, sem
+  ignorados; nomes de campos confirmados. Porém `nao_fluxo = S` em 11 das
+  13 contas: a etapa 11 passa a contar quantos lançamentos de conta
+  corrente caem em contas marcadas "fora do fluxo", antes de usarmos a
+  marcação como filtro. Testes: 214.
