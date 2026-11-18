@@ -177,3 +177,30 @@ Integração Omie).
 - Resultado com a conta da Tática fixou as chaves e as regras de cálculo
   (D-36 na wiki). Testes: 156 (incluindo que ids, contratos e parcelas
   nunca aparecem na saída).
+
+## Alterações branch feat/tabelas-titulos-lancamentos
+
+### 2026-11-18
+
+- **App `apps.financeiro` com as duas tabelas aprovadas (D-37)**, ambas
+  herdando `ModeloDaEmpresa`:
+  - `financeiro_titulos` (`Titulo`): contas a pagar, a receber e previsões
+    de contrato. Chave única `empresa_id + tipo + codigo_titulo`
+    (`nCodTitulo`). Base de contas a pagar/receber e do fluxo previsto.
+  - `financeiro_lancamentos_conta` (`LancamentoConta`): o que passou na
+    conta corrente (baixas, lançamentos diretos, transferências). Chave
+    única `empresa_id + natureza + codigo_movimento + codigo_baixa`
+    (`nCodMovCC`/`nCodBaixa`, 0 quando ausente), com check exigindo pelo
+    menos um dos dois. Base do fluxo realizado.
+  - Sem FK entre as tabelas: um lançamento pode chegar antes do título.
+  - Valores em `DecimalField(15, 2)`, nulos quando o Omie não informa.
+- **`Titulo.objects.previsoes_validas()`:** ignora a previsão de contrato
+  quando a mesma empresa já tem título a receber do mesmo contrato no mesmo
+  mês (previsão velha até a reconciliação, D-36).
+- **`apps/omie/conversao.py`:** converte uma linha do `ListarMovimentos`
+  para a tabela certa pelo `cGrupo` (chave + campos, sem banco). Valores
+  por `Decimal(str(x))` com 2 casas; datas `dd/mm/aaaa`; linha sem
+  identificador, `cGrupo` desconhecido ou formato inválido levanta
+  `LinhaIgnorada` com motivo seguro para log (sem valor do Omie).
+- Testes: 192 (36 novos). Conferido que quebram se a trava de empresa da
+  regra da previsão for removida e se o lançamento usar `nValorMovCC`.
