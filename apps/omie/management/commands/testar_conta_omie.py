@@ -23,6 +23,12 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from apps.omie.cliente import ClienteOmie
+from apps.omie.conversao import (
+    LinhaIgnorada,
+    converter_categoria,
+    converter_cliente,
+    converter_conta_corrente,
+)
 from apps.omie.erros import ErroCredencial, ErroOmie, SemRegistros
 from apps.omie.models import ContaOmie
 
@@ -84,9 +90,12 @@ class Command(BaseCommand):
             ('8. Chave única e tipos dos movimentos (reusa a etapa 4, sem chamar o Omie)', self.chave_movimentos),
             ('9. Identificador e campos por cGrupo (reusa a etapa 4, sem chamar o Omie)', self.campos_por_grupo),
             ('10. Chave da conta corrente, baixas em lote e previsões (reusa a etapa 4)', self.conta_corrente_e_previsoes),
+            ('11. Cadastros: estrutura e conversão para as tabelas (1 chamada nova)', self.cadastros),
         ]
         self.conta_corrente = None
         self.movimentos_90 = None
+        self.contas_lista = []
+        self.categorias_lista = []
         self.por_pagina = 100
         for titulo, etapa in etapas:
             self.stdout.write(self.style.MIGRATE_HEADING(f'\n{titulo}'))
@@ -115,6 +124,7 @@ class Command(BaseCommand):
 
     def contas_correntes(self):
         contas = list(self.cliente.listar_contas_correntes())
+        self.contas_lista = contas
         ativas = [c for c in contas if c.get('inativo') != 'S']
         self._linhas([f'total: {len(contas)} | ativas: {len(ativas)}'])
         if contas:
@@ -199,6 +209,7 @@ class Command(BaseCommand):
 
     def categorias(self):
         lista = list(self.cliente.listar_categorias())
+        self.categorias_lista = lista
         self._linhas([
             f'total: {len(lista)} | receita: {sum(1 for c in lista if c.get("conta_receita") == "S")} '
             f'| despesa: {sum(1 for c in lista if c.get("conta_despesa") == "S")}'
@@ -364,6 +375,43 @@ class Command(BaseCommand):
             f'  previsões com título a receber do mesmo contrato e mesma cNumParcela: '
             f'{sum(1 for d in previsoes if (d.get("nCodCtr"), d.get("cNumParcela")) in por_parcela)}',
         ])
+
+
+    def cadastros(self):
+        """Confere, com os dados reais, que a conversão acha os campos dos
+        cadastros (os nomes de categoria e cliente vieram só da
+        documentação). Mostra estrutura e contagens; nunca nomes."""
+        try:
+            resposta = self.cliente.chamar(
+                'geral/clientes', 'ListarClientes', {'pagina': 1, 'registros_por_pagina': 50}
+            )
+            clientes = resposta.get('clientes_cadastro') or []
+            self._linhas([f'clientes/fornecedores na conta: {resposta.get("total_de_registros")} '
+                          f'(amostra de {len(clientes)})'])
+            if clientes:
+                self._linhas(['estrutura de um cliente/fornecedor:', *estrutura(clientes[0], 1, max_nivel=1)])
+        except SemRegistros:
+            clientes = []
+            self._linhas(['sem clientes/fornecedores'])
+
+        for nome, lista, conversor in (
+            ('contas correntes', self.contas_lista, converter_conta_corrente),
+            ('categorias', self.categorias_lista, converter_categoria),
+            ('clientes/fornecedores (amostra)', clientes, converter_cliente),
+        ):
+            convertidos, ignorados, preenchidos = 0, Counter(), Counter()
+            for item in lista:
+                try:
+                    campos = conversor(item).campos
+                except LinhaIgnorada as erro:
+                    ignorados[erro.motivo] += 1
+                    continue
+                convertidos += 1
+                preenchidos.update(k for k, v in campos.items() if v not in (None, '', False))
+            self._linhas([
+                f'{nome}: {len(lista)} | convertidos: {convertidos} | ignorados: {dict(ignorados)}',
+                f'  campos preenchidos: {dict(sorted(preenchidos.items()))}',
+            ])
 
 
 def _dec(valor) -> Decimal | None:

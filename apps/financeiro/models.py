@@ -187,3 +187,120 @@ class LancamentoConta(ModeloDaEmpresa):
 
     def __str__(self) -> str:
         return f'lançamento {self.codigo_movimento}/{self.codigo_baixa} (empresa {self.empresa_id})'
+
+
+# --- cadastros (relidos por inteiro na reconciliação diária, D-37) -----------
+#
+# Guardam só o necessário para o dashboard mostrar nomes no lugar de
+# códigos. Por minimização (LGPD, RNF-04), NÃO guardam CPF/CNPJ, endereço,
+# telefone, e-mail, agência ou número de conta (D-38).
+
+
+class ContaCorrente(ModeloDaEmpresa):
+    """Conta corrente/caixa da empresa no Omie (`ListarContasCorrentes`)."""
+
+    codigo = models.BigIntegerField(help_text='nCodCC')
+    descricao = models.CharField(max_length=100, blank=True)
+    tipo = models.CharField(max_length=30, blank=True, help_text='tipo_conta_corrente (CC, CX, ...)')
+    codigo_banco = models.CharField(max_length=10, blank=True)
+    ativa = models.BooleanField(default=True, help_text='inativo != S')
+    fora_do_fluxo = models.BooleanField(default=False, help_text='nao_fluxo = S: não entra no fluxo de caixa')
+    saldo_inicial = models.DecimalField(**VALOR)
+    data_saldo_inicial = models.DateField(null=True, blank=True, help_text='saldo_data')
+    sincronizado_em = models.DateTimeField(auto_now=True)
+
+    objects = EscopoEmpresaQuerySet.as_manager()
+
+    class Meta:
+        db_table = 'financeiro_contas_correntes'
+        verbose_name = 'conta corrente'
+        verbose_name_plural = 'contas correntes'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa_id', 'codigo'], name='conta_corrente_unica_por_empresa'),
+        ]
+
+    def __str__(self) -> str:
+        return f'conta corrente {self.codigo} (empresa {self.empresa_id})'
+
+
+class Categoria(ModeloDaEmpresa):
+    """Categoria financeira (`ListarCategorias`). Código é texto ('2.01.03')."""
+
+    codigo = models.CharField(max_length=30)
+    descricao = models.CharField(max_length=120, blank=True)
+    codigo_superior = models.CharField(max_length=30, blank=True, help_text='categoria_superior')
+    receita = models.BooleanField(default=False, help_text='conta_receita = S')
+    despesa = models.BooleanField(default=False, help_text='conta_despesa = S')
+    sincronizado_em = models.DateTimeField(auto_now=True)
+
+    objects = EscopoEmpresaQuerySet.as_manager()
+
+    class Meta:
+        db_table = 'financeiro_categorias'
+        verbose_name = 'categoria'
+        verbose_name_plural = 'categorias'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa_id', 'codigo'], name='categoria_unica_por_empresa'),
+        ]
+
+    def __str__(self) -> str:
+        return f'categoria {self.codigo} (empresa {self.empresa_id})'
+
+
+class ClienteFornecedor(ModeloDaEmpresa):
+    """Cliente ou fornecedor (`ListarClientes`: o Omie usa um cadastro só)."""
+
+    codigo = models.BigIntegerField(help_text='codigo_cliente_omie')
+    razao_social = models.CharField(max_length=150, blank=True)
+    nome_fantasia = models.CharField(max_length=150, blank=True)
+    ativo = models.BooleanField(default=True, help_text='inativo != S')
+    sincronizado_em = models.DateTimeField(auto_now=True)
+
+    objects = EscopoEmpresaQuerySet.as_manager()
+
+    class Meta:
+        db_table = 'financeiro_clientes_fornecedores'
+        verbose_name = 'cliente ou fornecedor'
+        verbose_name_plural = 'clientes e fornecedores'
+        constraints = [
+            models.UniqueConstraint(fields=['empresa_id', 'codigo'], name='cliente_unico_por_empresa'),
+        ]
+
+    def __str__(self) -> str:
+        return f'cliente/fornecedor {self.codigo} (empresa {self.empresa_id})'
+
+
+# --- saldos ------------------------------------------------------------------
+
+
+class SaldoConta(ModeloDaEmpresa):
+    """Saldo de uma conta corrente num dia (`ListarExtrato` com
+    `cExibirApenasSaldo`). Uma linha por conta por dia: a sincronização
+    regrava o dia de hoje a cada rodada e os dias anteriores ficam como
+    histórico."""
+
+    codigo_conta_corrente = models.BigIntegerField(help_text='nCodCC')
+    data = models.DateField(help_text='dPeriodoFinal consultado')
+    saldo_atual = models.DecimalField(**VALOR, help_text='nSaldoAtual')
+    saldo_atual_previsto = models.DecimalField(**VALOR, help_text='nSaldoAtualPrevisto')
+    saldo_anterior = models.DecimalField(**VALOR, help_text='nSaldoAnterior')
+    saldo_conciliado = models.DecimalField(**VALOR, help_text='nSaldoConciliado')
+    saldo_disponivel = models.DecimalField(**VALOR, help_text='nSaldoDisponivel')
+    saldo_provisorio = models.DecimalField(**VALOR, help_text='nSaldoProvisorio')
+    limite_credito = models.DecimalField(**VALOR, help_text='nLimiteCreditoTotal')
+    sincronizado_em = models.DateTimeField(auto_now=True)
+
+    objects = EscopoEmpresaQuerySet.as_manager()
+
+    class Meta:
+        db_table = 'financeiro_saldos'
+        verbose_name = 'saldo de conta'
+        verbose_name_plural = 'saldos de conta'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['empresa_id', 'codigo_conta_corrente', 'data'], name='saldo_unico_por_conta_e_dia'
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'saldo da conta {self.codigo_conta_corrente} em {self.data} (empresa {self.empresa_id})'
