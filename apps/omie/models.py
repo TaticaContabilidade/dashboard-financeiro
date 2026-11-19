@@ -25,6 +25,13 @@ class ContaOmie(ModeloDaEmpresa):
         help_text='Desligada = a sincronização ignora esta empresa (sem apagar as credenciais).',
     )
     ultima_sincronizacao_em = models.DateTimeField(null=True, blank=True, editable=False)
+    # Erro que só uma pessoa resolve (credencial recusada, app sem
+    # pagamento): a sincronização para de tentar até `configurar_conta_omie`
+    # gravar credenciais novas. Insistir leva ao bloqueio de 30 min (HTTP 425).
+    suspensa_em = models.DateTimeField(null=True, blank=True, editable=False)
+    motivo_suspensao = models.CharField(max_length=200, blank=True, editable=False)
+    # Pausa automática (bloqueio 425 do Omie, erro permanente): volta sozinha.
+    pausada_ate = models.DateTimeField(null=True, blank=True, editable=False)
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
@@ -45,6 +52,13 @@ class ContaOmie(ModeloDaEmpresa):
             raise ValueError('app_key e app_secret são obrigatórios.')
         self.app_key_cifrada = cifra.cifrar(app_key)
         self.app_secret_cifrado = cifra.cifrar(app_secret)
+        # Credencial nova: vale tentar de novo.
+        self.suspensa_em = None
+        self.motivo_suspensao = ''
+        self.pausada_ate = None
+
+    def pode_sincronizar(self, agora) -> bool:
+        return self.ativa and self.suspensa_em is None and (self.pausada_ate is None or self.pausada_ate <= agora)
 
     def credenciais(self) -> tuple[str, str]:
         """(app_key, app_secret) em texto puro — só para montar a chamada ao Omie."""

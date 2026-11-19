@@ -7,7 +7,9 @@ services:
   db:
     image: postgres:16-alpine
     ports:
-      - "5436:5432"
+      # Só a própria máquina alcança o banco: com a sincronização ele guarda
+      # dados financeiros reais (a senha local é a padrão "postgres").
+      - "127.0.0.1:5436:5432"
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dashboard_financeiro
@@ -23,7 +25,7 @@ services:
     build: .
     # 8000 é do backend do forms-meta.
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     env_file:
       - path: .env
         required: false

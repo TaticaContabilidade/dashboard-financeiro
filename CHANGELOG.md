@@ -236,3 +236,37 @@ Integração Omie).
   13 contas: a etapa 11 passa a contar quantos lançamentos de conta
   corrente caem em contas marcadas "fora do fluxo", antes de usarmos a
   marcação como filtro. Testes: 214.
+
+## Alterações branch feat/sincronizacao
+
+### 2026-11-19
+
+- **Sincronização por empresa** (`apps/omie/sincronizacao.py`,
+  `Sincronizador`), backlog 3.1 a 3.5:
+  - **Incremental:** movimentos alterados do ponto de corte até hoje (o dia
+    do corte é relido de propósito) e saldo de hoje das contas ativas.
+    Sem execução anterior, faz a carga completa.
+  - **Reconciliação:** relê contas correntes, categorias, clientes e todos
+    os movimentos (`dDtAltDe` = 01/01/2000) e só depois, com tudo lido sem
+    erro, apaga o que sumiu do Omie. Nunca apaga mais de 20% de uma tabela
+    de uma vez (acima de 50 linhas): registra como `exclusoes_bloqueadas`.
+  - **Lock por empresa** (`pg_try_advisory_lock`): se a rodada anterior
+    ainda está na empresa, esta pula.
+  - **Erros:** credencial recusada suspende a empresa até
+    `configurar_conta_omie` gravar credenciais novas; bloqueio 425 e erro
+    permanente pausam 30 min; erro passageiro só registra. O ponto de
+    corte nunca avança com erro. Erro inesperado (bug) é registrado só com
+    a classe, sobe e o comando sai com código 1.
+  - Gravação em lote com upsert (`bulk_create(update_conflicts=True)`),
+    chave repetida no mesmo lote fica com a última.
+- `ContaOmie`: campos `suspensa_em`, `motivo_suspensao`, `pausada_ate` e
+  `pode_sincronizar()`; credencial nova limpa suspensão e pausa.
+- **Comando `sincronizar_omie`** (`--reconciliacao`, `--empresa-id`): uma
+  empresa por vez, a falha de uma não para as outras, saída só com
+  contagens.
+- **docker-compose:** Postgres e API publicados só em `127.0.0.1`, porque o
+  banco local passa a guardar dados financeiros reais.
+- Testes: 235 (21 novos). Sabotagens conferidas: exclusão sem trava de
+  empresa, erro avançando o corte, exclusão em massa sem proteção e lock
+  ignorado quebram os testes.
+
