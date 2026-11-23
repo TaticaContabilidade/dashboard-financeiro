@@ -54,3 +54,5 @@ Cada empresa vê só os próprios dados financeiros, vindos do próprio Omie
 | `manage.py configurar_conta_omie --empresa-id N --desativar` | Desliga a sincronização da empresa sem apagar as credenciais |
 | `manage.py recifrar_contas_omie` | Recifra todas as credenciais com a chave mais nova (rotação) |
 | `manage.py testar_conta_omie --empresa-id N` | Testa a conexão com o Omie da empresa e mostra só contagens e estrutura dos dados (sem valores) |
+| `manage.py sincronizar_omie [--empresa-id N]` | Incremental: movimentos alterados desde o último corte + saldo de hoje (a primeira vez faz a carga completa) |
+| `manage.py sincronizar_omie --reconciliacao` | Diária: relê cadastros e todos os movimentos e apaga o que sumiu do Omie |
