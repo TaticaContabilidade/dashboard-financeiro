@@ -38,6 +38,12 @@ A suíte gera o próprio par de chaves RS256 a cada execução
 |--------|------|--------|
 | GET | `/api/health/` | Público (health check do Render) |
 | GET | `/api/financeiro/meu-acesso/` | Quem acessa o financeiro — diz a empresa e se o usuário pode alterar |
+| GET | `/api/financeiro/contas-a-pagar/` | Contas a pagar paginadas + resumo por situação (filtros: `data_de`, `data_ate`, `situacao`) |
+| GET | `/api/financeiro/contas-a-receber/` | O mesmo, para contas a receber |
+| GET | `/api/financeiro/fluxo-de-caixa/` | Realizado e previsto por período (`data_de`, `data_ate`, `granularidade` = dia/semana/mes) |
+| GET | `/api/financeiro/ultima-atualizacao/` | Última sincronização bem-sucedida ("atualizado há X min") |
+
+Contrato completo e regras de cálculo: wiki, [API do Dashboard](https://github.com/TaticaContabilidade/dashboard-financeiro/wiki/API-do-Dashboard).
 
 ## Multiempresa
 

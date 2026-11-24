@@ -33,7 +33,15 @@ class Natureza(models.TextChoices):
     RECEBER = 'R', 'a receber (entrada)'
 
 
+STATUS_CANCELADO = 'CANCELADO'
+
+
 class TituloQuerySet(EscopoEmpresaQuerySet):
+    def sem_cancelados(self):
+        """Tira os títulos cancelados no Omie. O Omie os devolve com
+        `cStatus = CANCELADO` e `cLiquidado = S` (1.572 na Tática): sem
+        este filtro, um cancelado apareceria como "pago" nas telas."""
+        return self.exclude(status=STATUS_CANCELADO)
     def previsoes_validas(self):
         """Previsões de contrato que ainda valem para o fluxo previsto.
 
