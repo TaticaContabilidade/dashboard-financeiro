@@ -12,7 +12,15 @@ import pytest
 from django.utils import timezone
 
 from apps.acesso.tests.perfis import CLIENTE, SEM_ACESSO, TATICA
-from apps.financeiro.models import Categoria, ClienteFornecedor, LancamentoConta, Natureza, Titulo
+from apps.financeiro.models import (
+    Categoria,
+    ClienteFornecedor,
+    ContaCorrente,
+    LancamentoConta,
+    Natureza,
+    SaldoConta,
+    Titulo,
+)
 from apps.omie.models import ExecucaoSincronizacao
 
 pytestmark = pytest.mark.django_db
@@ -21,7 +29,8 @@ PAGAR = '/api/financeiro/contas-a-pagar/'
 RECEBER = '/api/financeiro/contas-a-receber/'
 FLUXO = '/api/financeiro/fluxo-de-caixa/'
 ATUALIZACAO = '/api/financeiro/ultima-atualizacao/'
-TODOS = [PAGAR, RECEBER, FLUXO, ATUALIZACAO]
+SALDOS = '/api/financeiro/saldos/'
+TODOS = [PAGAR, RECEBER, FLUXO, SALDOS, ATUALIZACAO]
 
 NOVEMBRO = '?data_de=2026-11-01&data_ate=2026-11-30'
 
@@ -327,3 +336,86 @@ def test_ultima_atualizacao_sem_execucoes(cliente_com_token):
     dados = cliente_com_token('gerente_financeiro').get(ATUALIZACAO).json()
 
     assert dados == {'ultima_sincronizacao': None, 'atualizado_ha': None}
+
+
+# --- saldo por conta corrente (RF-03) -------------------------------------------
+
+
+def criar_conta(empresa_id=TATICA, codigo=1, descricao='Banco A', ativa=True, fora_do_fluxo=False):
+    return ContaCorrente.objects.create(
+        empresa_id=empresa_id, codigo=codigo, descricao=descricao, tipo='CC',
+        ativa=ativa, fora_do_fluxo=fora_do_fluxo,
+    )
+
+
+def criar_saldo(empresa_id=TATICA, conta=1, data=date(2026, 11, 24), atual='100.00', **kwargs):
+    return SaldoConta.objects.create(
+        empresa_id=empresa_id, codigo_conta_corrente=conta, data=data,
+        saldo_atual=Decimal(atual) if atual is not None else None, **kwargs,
+    )
+
+
+def test_saldos_por_conta_e_totais(cliente_com_token):
+    criar_conta(codigo=1, descricao='Banco A')
+    criar_conta(codigo=2, descricao='Caixa', fora_do_fluxo=True)
+    criar_saldo(conta=1, atual='1500.50', saldo_disponivel=Decimal('1400.00'))
+    criar_saldo(conta=2, atual='200.00')
+
+    dados = cliente_com_token('gerente_financeiro').get(f'{SALDOS}?data=2026-11-24').json()
+
+    assert dados['data'] == '2026-11-24'
+    assert [(c['codigo'], c['saldo_atual'], c['fora_do_fluxo']) for c in dados['contas']] == [
+        (1, '1500.50', False),
+        (2, '200.00', True),
+    ]
+    assert dados['contas'][0]['saldo_disponivel'] == '1400.00'
+    assert dados['contas'][0]['limite_credito'] is None  # não informado pelo Omie: nulo, não zero
+    assert dados['totais'] == {'saldo_atual': '1700.50', 'saldo_atual_no_fluxo': '1500.50'}
+
+
+def test_saldos_usa_o_ultimo_saldo_ate_a_data(cliente_com_token):
+    criar_conta(codigo=1)
+    criar_saldo(conta=1, data=date(2026, 11, 20), atual='10.00')
+    criar_saldo(conta=1, data=date(2026, 11, 22), atual='20.00')
+    criar_saldo(conta=1, data=date(2026, 11, 24), atual='30.00')
+    cliente = cliente_com_token('gerente_financeiro')
+
+    conta = cliente.get(f'{SALDOS}?data=2026-11-23').json()['contas'][0]
+    assert (conta['data_saldo'], conta['saldo_atual']) == ('2026-11-22', '20.00')
+
+    conta = cliente.get(f'{SALDOS}?data=2026-11-24').json()['contas'][0]
+    assert (conta['data_saldo'], conta['saldo_atual']) == ('2026-11-24', '30.00')
+
+
+def test_saldos_conta_ativa_sem_saldo_aparece_vazia_e_inativa_sem_saldo_nao(cliente_com_token):
+    criar_conta(codigo=1, descricao='Ativa sem saldo')
+    criar_conta(codigo=2, descricao='Inativa sem saldo', ativa=False)
+    criar_conta(codigo=3, descricao='Inativa com saldo antigo', ativa=False)
+    criar_saldo(conta=3, data=date(2026, 10, 1), atual='5.00')
+
+    contas = cliente_com_token('gerente_financeiro').get(f'{SALDOS}?data=2026-11-24').json()['contas']
+
+    assert [(c['codigo'], c['data_saldo'], c['saldo_atual']) for c in contas] == [
+        (1, None, None),
+        (3, '2026-10-01', '5.00'),  # inativas vão para o fim
+    ]
+
+
+def test_saldos_nao_vaza_entre_empresas(cliente_com_token):
+    criar_conta(empresa_id=TATICA, codigo=1, descricao='Da Tática')
+    criar_saldo(empresa_id=TATICA, conta=1, atual='9999.00')
+    criar_conta(empresa_id=TATICA, codigo=2, descricao='Outra da Tática')  # ativa, sem saldo
+    criar_conta(empresa_id=CLIENTE, codigo=1, descricao='Do cliente')
+    criar_saldo(empresa_id=CLIENTE, conta=1, atual='50.00')
+
+    dados = cliente_com_token('colaborador_financeiro_cliente').get(f'{SALDOS}?data=2026-11-24').json()
+
+    assert [(c['descricao'], c['saldo_atual']) for c in dados['contas']] == [('Do cliente', '50.00')]
+    assert dados['totais']['saldo_atual'] == '50.00'
+
+
+def test_saldos_data_invalida_e_400(cliente_com_token):
+    resp = cliente_com_token('gerente_financeiro').get(f'{SALDOS}?data=24/11/2026')
+
+    assert resp.status_code == 400
+    assert 'data' in resp.json()

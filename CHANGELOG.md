@@ -309,3 +309,19 @@ Integração Omie).
   sem filtro de cancelados, valor do título no lugar do aberto, resumo sem
   `.order_by()`, dinheiro como float, nome do fornecedor de outra empresa,
   fluxo sem trava de empresa e data inválida ignorada quebram os testes.
+
+## Alterações branch feat/saldo-por-conta
+
+### 2026-11-24
+
+- **`GET /api/financeiro/saldos/`** (backlog 4.6, RF-03; wiki: API do
+  Dashboard): saldo de cada conta corrente numa data (`?data=`, padrão
+  hoje), pegando o último saldo gravado até ela (`DISTINCT ON`), com
+  `data_saldo` para a tela avisar quando não for do dia. Lista as contas
+  ativas e as inativas com saldo; campo não informado pelo Omie vem nulo.
+- Totais em dois cortes (`saldo_atual` e `saldo_atual_no_fluxo`), porque a
+  regra das contas fora do fluxo ainda não foi decidida (backlog 4.1b).
+- Testes: 285 (9 novos, mais o endpoint nos testes de 401/403). Sabotagens
+  conferidas: saldo ou conta de outra empresa, saldo mais antigo no lugar
+  do mais recente, saldo depois da data pedida e conta fora do fluxo no
+  total do fluxo quebram os testes.
