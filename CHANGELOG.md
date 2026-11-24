@@ -309,3 +309,17 @@ Integração Omie).
   sem filtro de cancelados, valor do título no lugar do aberto, resumo sem
   `.order_by()`, dinheiro como float, nome do fornecedor de outra empresa,
   fluxo sem trava de empresa e data inválida ignorada quebram os testes.
+
+## Alterações branch feat/teste-omie-etapa-12
+
+### 2026-11-24
+
+- **Etapa 12 do `testar_conta_omie`: rateio de categorias** (backlog 4.8,
+  D-41). Lê todas as contas a pagar e a receber e mede quantos títulos têm
+  rateio entre categorias (e quanto do valor), se o rateio atravessa
+  grupos (`2.03` × `2.04`), por ano de vencimento, se a soma das partes
+  fecha com o título e qual categoria o `ListarMovimentos` usa num título
+  rateado. Base para decidir se o gráfico de gastos por categoria pode
+  usar a categoria do movimento. Só contagens e percentuais.
+- Testes: 1 novo (sem valores nem textos na saída). Sabotagem conferida:
+  agrupar pelo código inteiro em vez do grupo quebra o teste.
