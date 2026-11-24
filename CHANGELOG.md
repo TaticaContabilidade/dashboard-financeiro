@@ -270,3 +270,42 @@ Integração Omie).
   empresa, erro avançando o corte, exclusão em massa sem proteção e lock
   ignorado quebram os testes.
 
+
+## Alterações branch feat/api-dashboard
+
+### 2026-11-24
+
+- **API do dashboard** (etapa 4 do backlog; wiki: API do Dashboard),
+  escrita a partir da base feita com o agente Antigravity e revisada aqui:
+  - `GET contas-a-pagar/` e `contas-a-receber/`: lista paginada com
+    situação derivada (pago, vencido, a vencer), nome do cliente/fornecedor
+    e da categoria, e `resumo` por situação somado sobre todos os títulos
+    filtrados;
+  - `GET fluxo-de-caixa/`: realizado (conta corrente, por pagamento) e
+    previsto (títulos em aberto + previsões válidas, por vencimento), por
+    dia, semana ou mês;
+  - `GET ultima-atualizacao/`: "atualizado há X min" (RF-04).
+- **Regras de negócio provisórias (D-40)**, para o setor financeiro ajustar
+  depois. A lista do que revisar está na wiki.
+- **Correções em relação à base:**
+  - o resumo agrupava título por título (a ordenação entrava no
+    `GROUP BY`) e mostrava só o último de cada situação;
+  - títulos cancelados (o Omie os manda como liquidados) apareciam como
+    pagos: agora ficam fora de tudo (`Titulo.objects.sem_cancelados()`);
+  - baixa parcial contava duas vezes no fluxo (pago no realizado + valor
+    inteiro no previsto): o previsto e o resumo usam `valor_aberto`, e o
+    resumo dos pagos usa `valor_pago`;
+  - data inválida dava erro 500 nas contas e era ignorada em silêncio no
+    fluxo: agora é 400 com o nome do campo, assim como período invertido,
+    situação e granularidade fora da lista;
+  - dinheiro saía como float no resumo e no fluxo: agora sempre texto com
+    2 casas, como nos campos das listas;
+  - previsões somadas pela natureza, não sempre como entrada.
+- **docker-compose:** a interface da rede no host tem nome fixo
+  (`br-dashfin`), para a regra do firewall do debugger do PyCharm valer
+  depois de um `docker compose down`.
+- Testes: 276 (41 da API). Testes de vazamento e de 403 em todos os
+  endpoints; respostas lidas como JSON de verdade. Sabotagens conferidas:
+  sem filtro de cancelados, valor do título no lugar do aberto, resumo sem
+  `.order_by()`, dinheiro como float, nome do fornecedor de outra empresa,
+  fluxo sem trava de empresa e data inválida ignorada quebram os testes.

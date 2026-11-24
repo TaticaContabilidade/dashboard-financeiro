@@ -43,3 +43,11 @@ services:
 
 volumes:
   dashboard-financeiro-dev-db:
+
+# Nome fixo da interface da rede no host, para a regra do firewall do
+# debugger do PyCharm sobreviver a um `docker compose down`:
+#   sudo ufw allow in on br-dashfin
+networks:
+  default:
+    driver_opts:
+      com.docker.network.bridge.name: br-dashfin
