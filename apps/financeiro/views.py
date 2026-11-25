@@ -36,6 +36,7 @@ from apps.financeiro.models import (
     ContaCorrente,
     LancamentoConta,
     Natureza,
+    SaldoConta,
     Titulo,
 )
 from apps.financeiro.serializers import TituloSerializer
@@ -414,6 +415,81 @@ def _como_data(valor) -> date:
     """Trunc* sobre DateField devolve date, mas sobre DateTimeField devolve
     datetime. Normaliza para date."""
     return valor.date() if hasattr(valor, 'date') else valor
+
+
+# --- saldo por conta corrente (RF-03) -------------------------------------------
+
+
+CAMPOS_DE_SALDO = ('saldo_atual', 'saldo_conciliado', 'saldo_disponivel', 'saldo_atual_previsto', 'limite_credito')
+
+
+class SaldosView(EscopoEmpresaMixin, APIView):
+    """GET /api/financeiro/saldos/ (RF-03)
+
+    O saldo de cada conta corrente numa data (`?data=AAAA-MM-DD`; padrão:
+    hoje), vindo do `ListarExtrato` do Omie. A sincronização grava o saldo
+    do dia das contas ativas; para cada conta vale o último saldo gravado
+    até a data pedida, e `data_saldo` diz de quando ele é.
+
+    Lista as contas ativas e as inativas que tenham saldo até a data. Os
+    totais vêm em dois cortes, porque a regra das contas fora do fluxo
+    ainda não foi decidida (backlog 4.1b): todas as contas e só as que
+    entram no fluxo.
+    """
+
+    def get(self, request: Request):
+        empresa_id = self.empresa_id()
+        data = _data_do_parametro(request.query_params, 'data') or timezone.localdate()
+
+        # Postgres DISTINCT ON: a linha mais recente de cada conta até a data.
+        ultimos = {
+            saldo.codigo_conta_corrente: saldo
+            for saldo in (
+                SaldoConta.objects.da_empresa(empresa_id)
+                .filter(data__lte=data)
+                .order_by('codigo_conta_corrente', '-data')
+                .distinct('codigo_conta_corrente')
+            )
+        }
+        contas = {
+            conta.codigo: conta
+            for conta in ContaCorrente.objects.da_empresa(empresa_id).filter(
+                Q(ativa=True) | Q(codigo__in=ultimos.keys())
+            )
+        }
+
+        linhas = []
+        totais = {'todas': ZERO, 'no_fluxo': ZERO}
+        for codigo in contas.keys() | ultimos.keys():
+            conta, saldo = contas.get(codigo), ultimos.get(codigo)
+            fora_do_fluxo = conta.fora_do_fluxo if conta else False
+            atual = saldo.saldo_atual if saldo else None
+            if atual is not None:
+                totais['todas'] += atual
+                if not fora_do_fluxo:
+                    totais['no_fluxo'] += atual
+            linhas.append({
+                'codigo': codigo,
+                'descricao': conta.descricao if conta else '',
+                'tipo': conta.tipo if conta else '',
+                'ativa': conta.ativa if conta else False,
+                'fora_do_fluxo': fora_do_fluxo,
+                'data_saldo': saldo.data if saldo else None,
+                **{
+                    campo: _dinheiro(getattr(saldo, campo)) if saldo and getattr(saldo, campo) is not None else None
+                    for campo in CAMPOS_DE_SALDO
+                },
+            })
+
+        linhas.sort(key=lambda linha: (not linha['ativa'], linha['descricao'].lower(), linha['codigo']))
+        return Response({
+            'data': data,
+            'contas': linhas,
+            'totais': {
+                'saldo_atual': _dinheiro(totais['todas']),
+                'saldo_atual_no_fluxo': _dinheiro(totais['no_fluxo']),
+            },
+        })
 
 
 # --- última atualização (RF-04) --------------------------------------------------

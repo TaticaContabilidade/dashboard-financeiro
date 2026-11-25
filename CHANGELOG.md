@@ -310,41 +310,16 @@ Integração Omie).
   `.order_by()`, dinheiro como float, nome do fornecedor de outra empresa,
   fluxo sem trava de empresa e data inválida ignorada quebram os testes.
 
-## Alterações branch feat/gastos-por-categoria
+## Alterações branch feat/teste-omie-etapa-12
 
-### 2026-11-25
+### 2026-11-24
 
-- **Categorias e gastos por categoria** (backlog 4.9, D-41; wiki: API do
-  Dashboard):
-  - `GET fluxo-de-caixa/por-categoria/` (`tipo` = despesas/receitas,
-    `base` = realizado/previsto): grupos de categoria (`2.03`) somados, com
-    as subcategorias, total e percentual, do maior para o menor. Valor
-    líquido de estornos; transferências (`0.xx`) fora; categoria apagada do
-    Omie como "Categoria não cadastrada";
-  - `GET categorias/`: árvore de categorias para o seletor;
-  - filtro `?categoria=` em contas a pagar/receber e no fluxo de caixa (o
-    grupo traz as subcategorias; vários separados por vírgula; código fora
-    do formato é 400).
-- As consultas-base do fluxo (realizado, títulos em aberto, previsões)
-  viraram funções, usadas pelo fluxo e pelo fluxo por categoria, para os
-  dois seguirem as mesmas regras.
-- **Rateio não sincronizado (D-42):** um título rateado entra inteiro na
-  categoria do movimento. Desprezível nas despesas; nas receitas da Tática
-  afeta ~800 títulos, documentado na wiki.
-- Testes: 300 (23 novos). Sabotagens conferidas: descrições ou árvore de
-  outra empresa, estorno somado em vez de descontado, transferências dentro
-  das despesas, previsto sem as previsões, grupo `2.03` pegando `2.030` e
-  código de categoria inválido aceito quebram os testes.
-
-### 2026-11-25 (contas fora do fluxo)
-
-- **Contas `nao_fluxo` fora do fluxo (D-43, backlog 4.1b):** no fluxo de
-  caixa e no fluxo por categoria, as contas marcadas para ficar fora do
-  fluxo no Omie saem do realizado e do previsto, como no relatório do
-  Omie. `?incluir_fora_do_fluxo=true` inclui (só `true`/`false`; o resto é
-  400). Linha sem conta corrente continua; a resposta ecoa o parâmetro.
-  Na Tática, o padrão fica com 86–87% do realizado.
-- Testes: 309 (9 novos). Sabotagens conferidas: contas fora do fluxo de
-  outra empresa, padrão incluindo tudo, linha sem conta excluída e a regra
-  faltando no realizado, no previsto, nas previsões ou no fluxo por
-  categoria quebram os testes.
+- **Etapa 12 do `testar_conta_omie`: rateio de categorias** (backlog 4.8,
+  D-41). Lê todas as contas a pagar e a receber e mede quantos títulos têm
+  rateio entre categorias (e quanto do valor), se o rateio atravessa
+  grupos (`2.03` × `2.04`), por ano de vencimento, se a soma das partes
+  fecha com o título e qual categoria o `ListarMovimentos` usa num título
+  rateado. Base para decidir se o gráfico de gastos por categoria pode
+  usar a categoria do movimento. Só contagens e percentuais.
+- Testes: 1 novo (sem valores nem textos na saída). Sabotagem conferida:
+  agrupar pelo código inteiro em vez do grupo quebra o teste.

@@ -52,6 +52,12 @@ class ClienteFalso:
     def listar_categorias(self, *a, **k):
         return iter([{'descricao': 'DESCRICAO-SENTINELA', 'conta_receita': 'S'}])
 
+    def listar_contas_pagar(self, *a, **k):
+        return iter([])
+
+    def listar_contas_receber(self, *a, **k):
+        return iter([])
+
 
 @pytest.fixture
 def conta():
@@ -168,4 +174,38 @@ def test_etapa_11_mede_lancamentos_em_contas_fora_do_fluxo(conta):
     assert "contas por marcação: {'fora/ativa': 1, 'no fluxo/ativa': 1}" in saida
     assert "por marcação da conta: {'fora do fluxo, ativa': 2}" in saida
     for valor in SENTINELAS:
+        assert valor not in saida, valor
+
+
+class ClienteComRateio(ClienteFalso):
+    def listar_movimentos(self, *a, **k):
+        movimento = {**MOVIMENTO, 'detalhes': {**MOVIMENTO['detalhes'], 'nCodTitulo': 1, 'cCodCateg': '2.03.01'}}
+        return iter([movimento])
+
+    def listar_contas_pagar(self, *a, **k):
+        def titulo(codigo, valor, partes, principal):
+            return {
+                'codigo_lancamento_omie': codigo, 'valor_documento': valor, 'data_vencimento': '10/03/2026',
+                'codigo_categoria': principal, 'observacao': 'RAZAO-SENTINELA',
+                'categorias': [{'codigo_categoria': c, 'valor': v, 'percentual': 50} for c, v in partes],
+            }
+        return iter([
+            titulo(1, 987654.32, [('2.03.01', 493827.16), ('2.04.01', 493827.16)], '2.03.01'),  # entre grupos
+            titulo(2, 100.0, [('2.03.01', 50.0), ('2.03.02', 40.0)], '2.03.01'),                # mesmo grupo, soma não fecha
+            titulo(3, 300.0, [('2.05.01', 300.0)], '2.05.01'),                                  # sem rateio
+            {'codigo_lancamento_omie': 4, 'valor_documento': 10.0},                             # sem a lista
+        ])
+
+
+def test_etapa_12_mede_rateio_sem_valores(conta):
+    saida = _rodar(ClienteComRateio())
+
+    assert 'contas a pagar: 4 | sem a lista "categorias": 1 | com rateio (2+ categorias): 2' in saida
+    assert 'rateio entre grupos diferentes (ex.: 2.03 e 2.04): 1 | só dentro do mesmo grupo: 1' in saida
+    assert "por ano de vencimento: {2026: 2}" in saida
+    assert 'soma das partes diferente do valor do título: 1' in saida
+    assert "categoria que o ListarMovimentos usa (títulos dos 90 dias da etapa 4): {'a principal do título': 1}" in saida
+    assert 'codigo_categoria: str' in saida
+    assert 'contas a receber: 0' in saida
+    for valor in SENTINELAS + ['493827.16']:
         assert valor not in saida, valor

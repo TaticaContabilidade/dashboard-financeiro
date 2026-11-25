@@ -12,7 +12,8 @@ saída pode ser colada na conversa/wiki sem expor dado financeiro.
 São ~10 chamadas ao Omie (mais as páginas), todas de leitura, com
 parâmetros diferentes entre si (evita a regra de consulta repetida em
 < 60 s). As etapas 8 a 10 não chamam o Omie: reaproveitam os movimentos da
-etapa 4.
+etapa 4. A etapa 12 lê todas as contas a pagar e a receber (uma chamada
+por página de 100; alguns minutos numa conta grande).
 """
 
 from collections import Counter, defaultdict
@@ -91,6 +92,7 @@ class Command(BaseCommand):
             ('9. Identificador e campos por cGrupo (reusa a etapa 4, sem chamar o Omie)', self.campos_por_grupo),
             ('10. Chave da conta corrente, baixas em lote e previsões (reusa a etapa 4)', self.conta_corrente_e_previsoes),
             ('11. Cadastros: estrutura e conversão para as tabelas (1 chamada nova)', self.cadastros),
+            ('12. Rateio de categorias (lê todas as contas a pagar e a receber; alguns minutos)', self.rateio),
         ]
         self.conta_corrente = None
         self.movimentos_90 = None
@@ -436,6 +438,75 @@ class Command(BaseCommand):
                 f'contas por marcação: {dict(Counter(f"{"fora" if f else "no fluxo"}/{"ativa" if a else "inativa"}" for f, a in contas.values()))}',
                 f'lançamentos de conta corrente (90 dias) por marcação da conta: {dict(por_marca)}',
             ])
+
+    def rateio(self):
+        """O `ListarMovimentos` traz UMA categoria por linha; o rateio entre
+        várias só vem no `ListarContasPagar`/`Receber` (lista `categorias`).
+        Mede se a empresa usa rateio e se ele atravessa grupos de categoria
+        (o gráfico de gastos agrupa pelo 2º nível, ex.: 2.03): rateio dentro
+        do mesmo grupo não muda o total do grupo. Só contagens e percentuais."""
+        categoria_do_movimento = {}
+        for m in self.movimentos_90 or []:
+            d = m.get('detalhes') or {}
+            if d.get('cGrupo') in ('CONTA_A_PAGAR', 'CONTA_A_RECEBER') and d.get('nCodTitulo'):
+                categoria_do_movimento[d['nCodTitulo']] = d.get('cCodCateg') or ''
+
+        for nome, listar in (('a pagar', self.cliente.listar_contas_pagar),
+                             ('a receber', self.cliente.listar_contas_receber)):
+            total, sem_lista = 0, 0
+            rateados, entre_grupos, soma_nao_fecha = 0, 0, 0
+            valor_total, valor_rateado = Decimal('0'), Decimal('0')
+            por_ano, qtd_categorias = Counter(), Counter()
+            no_movimento = Counter()
+            exemplo = None
+            for titulo in listar():
+                total += 1
+                valor = _dec(titulo.get('valor_documento')) or Decimal('0')
+                valor_total += valor
+                itens = titulo.get('categorias')
+                if not isinstance(itens, list) or not itens:
+                    sem_lista += 1
+                    continue
+                codigos = [str(i.get('codigo_categoria') or '') for i in itens if isinstance(i, dict)]
+                if len(set(codigos)) <= 1:
+                    continue
+                rateados += 1
+                valor_rateado += valor
+                exemplo = exemplo or itens[0]
+                qtd_categorias[len(set(codigos))] += 1
+                if len({_grupo(c) for c in codigos}) > 1:
+                    entre_grupos += 1
+                vencimento = _data_omie(titulo.get('data_vencimento'))
+                por_ano[vencimento.year if vencimento else 'sem data'] += 1
+                soma = _soma(i.get('valor') for i in itens if isinstance(i, dict))
+                if valor and abs(soma - valor) > Decimal('0.01'):
+                    soma_nao_fecha += 1
+                movimento = categoria_do_movimento.get(titulo.get('codigo_lancamento_omie'))
+                if movimento is not None:
+                    principal = str(titulo.get('codigo_categoria') or '')
+                    no_movimento['a principal do título' if movimento == principal else
+                                  'outra do rateio' if movimento in codigos else 'fora do rateio'] += 1
+
+            percentual = f'{valor_rateado / valor_total * 100:.1f}%' if valor_total else '-'
+            self._linhas([
+                f'contas {nome}: {total} | sem a lista "categorias": {sem_lista} | '
+                f'com rateio (2+ categorias): {rateados} ({percentual} do valor)',
+            ])
+            if rateados:
+                self._linhas([
+                    f'  rateio entre grupos diferentes (ex.: 2.03 e 2.04): {entre_grupos} | '
+                    f'só dentro do mesmo grupo: {rateados - entre_grupos}',
+                    f'  por quantidade de categorias: {dict(sorted(qtd_categorias.items()))}',
+                    f'  por ano de vencimento: {dict(sorted(por_ano.items(), key=str))}',
+                    f'  soma das partes diferente do valor do título: {soma_nao_fecha}',
+                    f'  categoria que o ListarMovimentos usa (títulos dos 90 dias da etapa 4): {dict(no_movimento)}',
+                    '  estrutura de um item da lista:', *estrutura(exemplo, 2),
+                ])
+
+
+def _grupo(codigo: str) -> str:
+    """'2.03.01' -> '2.03': o nível que o gráfico de gastos agrupa."""
+    return '.'.join(codigo.split('.')[:2])
 
 
 def _dec(valor) -> Decimal | None:
