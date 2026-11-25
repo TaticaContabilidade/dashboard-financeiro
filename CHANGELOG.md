@@ -310,18 +310,16 @@ Integração Omie).
   `.order_by()`, dinheiro como float, nome do fornecedor de outra empresa,
   fluxo sem trava de empresa e data inválida ignorada quebram os testes.
 
-## Alterações branch feat/saldo-por-conta
+## Alterações branch feat/teste-omie-etapa-12
 
 ### 2026-11-24
 
-- **`GET /api/financeiro/saldos/`** (backlog 4.6, RF-03; wiki: API do
-  Dashboard): saldo de cada conta corrente numa data (`?data=`, padrão
-  hoje), pegando o último saldo gravado até ela (`DISTINCT ON`), com
-  `data_saldo` para a tela avisar quando não for do dia. Lista as contas
-  ativas e as inativas com saldo; campo não informado pelo Omie vem nulo.
-- Totais em dois cortes (`saldo_atual` e `saldo_atual_no_fluxo`), porque a
-  regra das contas fora do fluxo ainda não foi decidida (backlog 4.1b).
-- Testes: 285 (9 novos, mais o endpoint nos testes de 401/403). Sabotagens
-  conferidas: saldo ou conta de outra empresa, saldo mais antigo no lugar
-  do mais recente, saldo depois da data pedida e conta fora do fluxo no
-  total do fluxo quebram os testes.
+- **Etapa 12 do `testar_conta_omie`: rateio de categorias** (backlog 4.8,
+  D-41). Lê todas as contas a pagar e a receber e mede quantos títulos têm
+  rateio entre categorias (e quanto do valor), se o rateio atravessa
+  grupos (`2.03` × `2.04`), por ano de vencimento, se a soma das partes
+  fecha com o título e qual categoria o `ListarMovimentos` usa num título
+  rateado. Base para decidir se o gráfico de gastos por categoria pode
+  usar a categoria do movimento. Só contagens e percentuais.
+- Testes: 1 novo (sem valores nem textos na saída). Sabotagem conferida:
+  agrupar pelo código inteiro em vez do grupo quebra o teste.
