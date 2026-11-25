@@ -33,6 +33,7 @@ from apps.acesso.escopo import EscopoEmpresaMixin
 from apps.financeiro.models import (
     Categoria,
     ClienteFornecedor,
+    ContaCorrente,
     LancamentoConta,
     Natureza,
     Titulo,
@@ -101,20 +102,54 @@ def _filtro_de_categoria(params) -> Q | None:
     return filtro
 
 
-# --- consultas-base do fluxo (D-36, D-40) -------------------------------------
+VERDADEIRO_FALSO = {'true': True, 'false': False}
+
+
+def _incluir_fora_do_fluxo(params) -> bool:
+    valor = params.get('incluir_fora_do_fluxo')
+    if valor in (None, ''):
+        return False
+    if valor not in VERDADEIRO_FALSO:
+        raise ValidationError({'incluir_fora_do_fluxo': 'Use true ou false.'})
+    return VERDADEIRO_FALSO[valor]
+
+
+def _filtro_de_contas(empresa_id: int, incluir_fora_do_fluxo: bool) -> Q | None:
+    """Contas marcadas `nao_fluxo` no Omie ficam fora do fluxo, como no
+    relatório do próprio Omie (D-43), a não ser que a tela peça para incluir.
+    Linha sem conta corrente (título sem conta definida) continua."""
+    if incluir_fora_do_fluxo:
+        return None
+    fora = list(
+        ContaCorrente.objects.da_empresa(empresa_id).filter(fora_do_fluxo=True).values_list('codigo', flat=True)
+    )
+    return ~Q(codigo_conta_corrente__in=fora) if fora else None
+
+
+def _juntar(*filtros: Q | None) -> Q | None:
+    juntos = [f for f in filtros if f is not None]
+    if not juntos:
+        return None
+    resultado = juntos[0]
+    for filtro in juntos[1:]:
+        resultado &= filtro
+    return resultado
+
+
+# --- consultas-base do fluxo (D-36, D-40, D-43) --------------------------------
 # Usadas pelo fluxo de caixa e pelo fluxo por categoria, para os dois
-# seguirem exatamente as mesmas regras.
+# seguirem exatamente as mesmas regras. `filtro` junta categoria e contas.
 
 
-def _lancamentos_realizados(empresa_id: int, data_de: date, data_ate: date, categoria: Q | None):
+def _lancamentos_realizados(empresa_id: int, data_de: date, data_ate: date, filtro: Q | None):
     """Linhas de conta corrente pagas no período (o realizado)."""
     qs = LancamentoConta.objects.da_empresa(empresa_id).filter(
         data_pagamento__gte=data_de, data_pagamento__lte=data_ate,
     )
-    return qs.filter(categoria) if categoria else qs
+    return qs.filter(filtro) if filtro else qs
 
 
-def _titulos_em_aberto(empresa_id: int, data_de: date, data_ate: date, categoria: Q | None):
+def _titulos_em_aberto(empresa_id: int, data_de: date, data_ate: date, filtro: Q | None):
     """Títulos não liquidados com vencimento no período, anotados com o que
     falta pagar/receber (`em_aberto`)."""
     qs = (
@@ -128,10 +163,10 @@ def _titulos_em_aberto(empresa_id: int, data_de: date, data_ate: date, categoria
         )
         .annotate(em_aberto=VALOR_EM_ABERTO)
     )
-    return qs.filter(categoria) if categoria else qs
+    return qs.filter(filtro) if filtro else qs
 
 
-def _previsoes(empresa_id: int, data_de: date, data_ate: date, categoria: Q | None):
+def _previsoes(empresa_id: int, data_de: date, data_ate: date, filtro: Q | None):
     """Previsões de contrato ainda válidas com vencimento no período."""
     qs = (
         Titulo.objects.da_empresa(empresa_id)
@@ -139,7 +174,7 @@ def _previsoes(empresa_id: int, data_de: date, data_ate: date, categoria: Q | No
         .previsoes_validas()
         .filter(data_vencimento__gte=data_de, data_vencimento__lte=data_ate)
     )
-    return qs.filter(categoria) if categoria else qs
+    return qs.filter(filtro) if filtro else qs
 
 
 # --- contas a pagar / a receber (RF-01, RF-02) ---------------------------------
@@ -278,7 +313,8 @@ class FluxoDeCaixaView(EscopoEmpresaMixin, APIView):
       vencimento, mais as previsões de contrato ainda válidas (D-36).
 
     Parâmetros: `data_de`, `data_ate` (padrão: o mês atual),
-    `granularidade` (`dia`, `semana` ou `mes`; padrão `mes`) e `categoria`.
+    `granularidade` (`dia`, `semana` ou `mes`; padrão `mes`), `categoria` e
+    `incluir_fora_do_fluxo` (padrão `false`: contas `nao_fluxo` fora, D-43).
     """
 
     def get(self, request: Request):
@@ -295,22 +331,23 @@ class FluxoDeCaixaView(EscopoEmpresaMixin, APIView):
             params, padrao_de=hoje.replace(day=1), padrao_ate=_fim_periodo(hoje, 'mes'),
         )
 
-        categoria = _filtro_de_categoria(params)
+        incluir_fora = _incluir_fora_do_fluxo(params)
+        filtro = _juntar(_filtro_de_categoria(params), _filtro_de_contas(empresa_id, incluir_fora))
 
         realizado = (
-            _lancamentos_realizados(empresa_id, data_de, data_ate, categoria)
+            _lancamentos_realizados(empresa_id, data_de, data_ate, filtro)
             .annotate(periodo=truncar('data_pagamento'))
             .values('periodo')
             .annotate(**_entradas_e_saidas('valor'))
         )
         previsto_titulos = (
-            _titulos_em_aberto(empresa_id, data_de, data_ate, categoria)
+            _titulos_em_aberto(empresa_id, data_de, data_ate, filtro)
             .annotate(periodo=truncar('data_vencimento'))
             .values('periodo')
             .annotate(**_entradas_e_saidas('em_aberto'))
         )
         previsto_previsoes = (
-            _previsoes(empresa_id, data_de, data_ate, categoria)
+            _previsoes(empresa_id, data_de, data_ate, filtro)
             .annotate(periodo=truncar('data_vencimento'))
             .values('periodo')
             .annotate(**_entradas_e_saidas('valor_titulo'))
@@ -332,6 +369,7 @@ class FluxoDeCaixaView(EscopoEmpresaMixin, APIView):
             'data_de': data_de,
             'data_ate': data_ate,
             'granularidade': granularidade,
+            'incluir_fora_do_fluxo': incluir_fora,
             'periodos': [
                 {'inicio': inicio, 'fim': _fim_periodo(inicio, granularidade), **_formatar(item)}
                 for inicio, item in sorted(periodos.items())

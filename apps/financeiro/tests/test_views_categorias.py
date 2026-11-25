@@ -26,11 +26,12 @@ def categoria(codigo, descricao, empresa_id=TATICA):
     )
 
 
-def lancamento(categoria, valor, natureza=Natureza.PAGAR, empresa_id=TATICA, dia=date(2026, 11, 10), movimento=None):
+def lancamento(categoria, valor, natureza=Natureza.PAGAR, empresa_id=TATICA, dia=date(2026, 11, 10), movimento=None,
+               **kwargs):
     lancamento.contador += 1
     return LancamentoConta.objects.create(
         empresa_id=empresa_id, natureza=natureza, codigo_movimento=movimento or lancamento.contador,
-        codigo_baixa=0, codigo_categoria=categoria, valor=Decimal(valor), data_pagamento=dia,
+        codigo_baixa=0, codigo_categoria=categoria, valor=Decimal(valor), data_pagamento=dia, **kwargs,
     )
 
 
@@ -247,3 +248,68 @@ def test_filtro_de_categoria_invalido_e_400(cliente_com_token, valor):
 
     assert resp.status_code == 400
     assert 'categoria' in resp.json()
+
+
+# --- contas fora do fluxo (D-43) ------------------------------------------------
+
+
+@pytest.fixture
+def contas():
+    from apps.financeiro.models import ContaCorrente
+    ContaCorrente.objects.create(empresa_id=TATICA, codigo=1, descricao='Principal', fora_do_fluxo=False)
+    ContaCorrente.objects.create(empresa_id=TATICA, codigo=2, descricao='Aplicação', fora_do_fluxo=True)
+    # A mesma conta 1 é "fora do fluxo" na outra empresa: não pode afetar a Tática.
+    ContaCorrente.objects.create(empresa_id=CLIENTE, codigo=1, descricao='Do cliente', fora_do_fluxo=True)
+
+
+FLUXO = '/api/financeiro/fluxo-de-caixa/'
+
+
+def test_fluxo_deixa_contas_fora_do_fluxo_de_fora_por_padrao(cliente_com_token, plano, contas):
+    lancamento('2.03.01', '100.00', codigo_conta_corrente=1)
+    lancamento('2.03.01', '900.00', codigo_conta_corrente=2)       # conta fora do fluxo
+    lancamento('2.03.01', '5.00')                                  # sem conta: continua
+    titulo('2.03.01', '40.00', codigo_conta_corrente=1)
+    titulo('2.03.01', '400.00', codigo_conta_corrente=2)           # previsto também (D-43)
+    titulo('2.03.01', '4.00')                                      # sem conta definida: continua
+    cliente = cliente_com_token('gerente_financeiro')
+
+    padrao = cliente.get(f'{FLUXO}?{NOVEMBRO}').json()
+    assert padrao['incluir_fora_do_fluxo'] is False
+    assert padrao['totais']['realizado']['saidas'] == '105.00'
+    assert padrao['totais']['previsto']['saidas'] == '44.00'
+
+    tudo = cliente.get(f'{FLUXO}?{NOVEMBRO}&incluir_fora_do_fluxo=true').json()
+    assert tudo['incluir_fora_do_fluxo'] is True
+    assert tudo['totais']['realizado']['saidas'] == '1005.00'
+    assert tudo['totais']['previsto']['saidas'] == '444.00'
+
+
+def test_previsao_em_conta_fora_do_fluxo_fica_de_fora(cliente_com_token, plano, contas):
+    titulo('1.01.01', '300.00', tipo=Titulo.Tipo.PREVISAO, codigo_conta_corrente=2)
+    titulo('1.01.01', '30.00', tipo=Titulo.Tipo.PREVISAO, codigo_conta_corrente=1)
+
+    totais = cliente_com_token('gerente_financeiro').get(f'{FLUXO}?{NOVEMBRO}').json()['totais']
+
+    assert totais['previsto']['entradas'] == '30.00'
+
+
+def test_por_categoria_segue_a_mesma_regra(cliente_com_token, plano, contas):
+    lancamento('2.03.01', '100.00', codigo_conta_corrente=1)
+    lancamento('2.04.01', '900.00', codigo_conta_corrente=2)
+    cliente = cliente_com_token('gerente_financeiro')
+
+    padrao = cliente.get(f'{POR_CATEGORIA}?{NOVEMBRO}').json()
+    assert (padrao['total'], [c['codigo'] for c in padrao['categorias']]) == ('100.00', ['2.03'])
+
+    tudo = cliente.get(f'{POR_CATEGORIA}?{NOVEMBRO}&incluir_fora_do_fluxo=true').json()
+    assert tudo['total'] == '1000.00'
+
+
+@pytest.mark.parametrize('url', [FLUXO, POR_CATEGORIA])
+@pytest.mark.parametrize('valor', ['sim', '1', 'True'])
+def test_incluir_fora_do_fluxo_invalido_e_400(cliente_com_token, url, valor):
+    resp = cliente_com_token('gerente_financeiro').get(f'{url}?incluir_fora_do_fluxo={valor}')
+
+    assert resp.status_code == 400
+    assert 'incluir_fora_do_fluxo' in resp.json()

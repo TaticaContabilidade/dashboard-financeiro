@@ -27,7 +27,10 @@ from apps.financeiro.views import (
     ZERO,
     _dinheiro,
     _entradas_e_saidas,
+    _filtro_de_contas,
     _fim_periodo,
+    _incluir_fora_do_fluxo,
+    _juntar,
     _lancamentos_realizados,
     _periodo_do_parametro,
     _previsoes,
@@ -86,7 +89,8 @@ class FluxoPorCategoriaView(EscopoEmpresaMixin, APIView):
     Para o gráfico de gastos/receitas por categoria. Parâmetros:
     `data_de`, `data_ate` (padrão: o mês atual), `tipo` (`despesas` ou
     `receitas`; padrão `despesas`) e `base` (`realizado` ou `previsto`;
-    padrão `realizado`).
+    padrão `realizado`) e `incluir_fora_do_fluxo` (padrão `false`: contas
+    `nao_fluxo` fora, como no fluxo de caixa, D-43).
 
     Mesmas regras do fluxo de caixa (D-36, D-40). Valor líquido: numa
     categoria de despesa, o dinheiro que voltou (estorno) é descontado.
@@ -110,7 +114,8 @@ class FluxoPorCategoriaView(EscopoEmpresaMixin, APIView):
         )
 
         raiz = RAIZ_DO_TIPO[tipo]
-        do_tipo = Q(codigo_categoria__startswith=f'{raiz}.')
+        incluir_fora = _incluir_fora_do_fluxo(params)
+        do_tipo = _juntar(Q(codigo_categoria__startswith=f'{raiz}.'), _filtro_de_contas(empresa_id, incluir_fora))
         if base == 'realizado':
             consultas = [(_lancamentos_realizados(empresa_id, data_de, data_ate, do_tipo), 'valor')]
         else:
@@ -169,6 +174,7 @@ class FluxoPorCategoriaView(EscopoEmpresaMixin, APIView):
             'data_ate': data_ate,
             'tipo': tipo,
             'base': base,
+            'incluir_fora_do_fluxo': incluir_fora,
             'total': _dinheiro(total),
             'categorias': categorias,
         })

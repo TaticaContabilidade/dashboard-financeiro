@@ -40,7 +40,7 @@ A suíte gera o próprio par de chaves RS256 a cada execução
 | GET | `/api/financeiro/meu-acesso/` | Quem acessa o financeiro — diz a empresa e se o usuário pode alterar |
 | GET | `/api/financeiro/contas-a-pagar/` | Contas a pagar paginadas + resumo por situação (filtros: `data_de`, `data_ate`, `situacao`, `categoria`) |
 | GET | `/api/financeiro/contas-a-receber/` | O mesmo, para contas a receber |
-| GET | `/api/financeiro/fluxo-de-caixa/` | Realizado e previsto por período (`data_de`, `data_ate`, `granularidade` = dia/semana/mes, `categoria`) |
+| GET | `/api/financeiro/fluxo-de-caixa/` | Realizado e previsto por período (`data_de`, `data_ate`, `granularidade` = dia/semana/mes, `categoria`, `incluir_fora_do_fluxo`); contas fora do fluxo do Omie ficam de fora por padrão |
 | GET | `/api/financeiro/fluxo-de-caixa/por-categoria/` | Gastos ou receitas por categoria (grupo + subcategorias, com percentual), realizado ou previsto |
 | GET | `/api/financeiro/categorias/` | Árvore de categorias da empresa (para o filtro `?categoria=`) |
 | GET | `/api/financeiro/ultima-atualizacao/` | Última sincronização bem-sucedida ("atualizado há X min") |

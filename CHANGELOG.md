@@ -335,3 +335,16 @@ Integração Omie).
   outra empresa, estorno somado em vez de descontado, transferências dentro
   das despesas, previsto sem as previsões, grupo `2.03` pegando `2.030` e
   código de categoria inválido aceito quebram os testes.
+
+### 2026-11-25 (contas fora do fluxo)
+
+- **Contas `nao_fluxo` fora do fluxo (D-43, backlog 4.1b):** no fluxo de
+  caixa e no fluxo por categoria, as contas marcadas para ficar fora do
+  fluxo no Omie saem do realizado e do previsto, como no relatório do
+  Omie. `?incluir_fora_do_fluxo=true` inclui (só `true`/`false`; o resto é
+  400). Linha sem conta corrente continua; a resposta ecoa o parâmetro.
+  Na Tática, o padrão fica com 86–87% do realizado.
+- Testes: 309 (9 novos). Sabotagens conferidas: contas fora do fluxo de
+  outra empresa, padrão incluindo tudo, linha sem conta excluída e a regra
+  faltando no realizado, no previsto, nas previsões ou no fluxo por
+  categoria quebram os testes.
