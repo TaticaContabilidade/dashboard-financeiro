@@ -38,7 +38,7 @@ A suíte gera o próprio par de chaves RS256 a cada execução
 |--------|------|--------|
 | GET | `/api/health/` | Público (health check do Render) |
 | GET | `/api/financeiro/meu-acesso/` | Quem acessa o financeiro — diz a empresa e se o usuário pode alterar |
-| GET | `/api/financeiro/contas-a-pagar/` | Contas a pagar paginadas + resumo por situação (filtros: `data_de`, `data_ate`, `situacao`) |
+| GET | `/api/financeiro/contas-a-pagar/` | Contas a pagar paginadas + resumo por situação (filtros: `data_de`, `data_ate`, `situacao`, `categoria`) |
 | GET | `/api/financeiro/contas-a-receber/` | O mesmo, para contas a receber |
 | GET | `/api/financeiro/fluxo-de-caixa/` | Realizado e previsto por período (`data_de`, `data_ate`, `granularidade` = dia/semana/mes) |
 | GET | `/api/financeiro/saldos/` | Saldo de cada conta corrente numa data (`data`; padrão hoje), com totais de todas as contas e só das do fluxo |

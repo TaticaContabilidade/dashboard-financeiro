@@ -7,6 +7,7 @@ from .views import (
     SaldosView,
     UltimaAtualizacaoView,
 )
+from .views_categorias import CategoriasView, FluxoPorCategoriaView
 
 urlpatterns = [
     path('contas-a-pagar/', ContasAPagarView.as_view(), name='contas-a-pagar'),
