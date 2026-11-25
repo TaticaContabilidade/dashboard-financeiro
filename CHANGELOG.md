@@ -323,3 +323,70 @@ Integração Omie).
   usar a categoria do movimento. Só contagens e percentuais.
 - Testes: 1 novo (sem valores nem textos na saída). Sabotagem conferida:
   agrupar pelo código inteiro em vez do grupo quebra o teste.
+
+## Alterações branch feat/saldo-por-conta
+
+### 2026-11-24
+
+- **`GET /api/financeiro/saldos/`** (backlog 4.6, RF-03; wiki: API do
+  Dashboard): saldo de cada conta corrente numa data (`?data=`, padrão
+  hoje), pegando o último saldo gravado até ela (`DISTINCT ON`), com
+  `data_saldo` para a tela avisar quando não for do dia. Lista as contas
+  ativas e as inativas com saldo; campo não informado pelo Omie vem nulo.
+- Totais em dois cortes (`saldo_atual` e `saldo_atual_no_fluxo`), porque a
+  regra das contas fora do fluxo ainda não foi decidida (backlog 4.1b).
+- Testes: 285 (9 novos, mais o endpoint nos testes de 401/403). Sabotagens
+  conferidas: saldo ou conta de outra empresa, saldo mais antigo no lugar
+  do mais recente, saldo depois da data pedida e conta fora do fluxo no
+  total do fluxo quebram os testes.
+
+## Alterações branch feat/gastos-por-categoria
+
+### 2026-11-25
+
+- **Categorias e gastos por categoria** (backlog 4.9, D-41; wiki: API do
+  Dashboard):
+  - `GET fluxo-de-caixa/por-categoria/` (`tipo` = despesas/receitas,
+    `base` = realizado/previsto): grupos de categoria (`2.03`) somados, com
+    as subcategorias, total e percentual, do maior para o menor. Valor
+    líquido de estornos; transferências (`0.xx`) fora; categoria apagada do
+    Omie como "Categoria não cadastrada";
+  - `GET categorias/`: árvore de categorias para o seletor;
+  - filtro `?categoria=` em contas a pagar/receber e no fluxo de caixa (o
+    grupo traz as subcategorias; vários separados por vírgula; código fora
+    do formato é 400).
+- As consultas-base do fluxo (realizado, títulos em aberto, previsões)
+  viraram funções, usadas pelo fluxo e pelo fluxo por categoria, para os
+  dois seguirem as mesmas regras.
+- **Rateio não sincronizado (D-42):** um título rateado entra inteiro na
+  categoria do movimento. Desprezível nas despesas; nas receitas da Tática
+  afeta ~800 títulos, documentado na wiki.
+- Testes: 300 (23 novos). Sabotagens conferidas: descrições ou árvore de
+  outra empresa, estorno somado em vez de descontado, transferências dentro
+  das despesas, previsto sem as previsões, grupo `2.03` pegando `2.030` e
+  código de categoria inválido aceito quebram os testes.
+
+### 2026-11-25 (contas fora do fluxo)
+
+- **Contas `nao_fluxo` fora do fluxo (D-43, backlog 4.1b):** no fluxo de
+  caixa e no fluxo por categoria, as contas marcadas para ficar fora do
+  fluxo no Omie saem do realizado e do previsto, como no relatório do
+  Omie. `?incluir_fora_do_fluxo=true` inclui (só `true`/`false`; o resto é
+  400). Linha sem conta corrente continua; a resposta ecoa o parâmetro.
+  Na Tática, o padrão fica com 86–87% do realizado.
+- Testes: 309 (9 novos). Sabotagens conferidas: contas fora do fluxo de
+  outra empresa, padrão incluindo tudo, linha sem conta excluída e a regra
+  faltando no realizado, no previsto, nas previsões ou no fluxo por
+  categoria quebram os testes.
+
+## Alterações branch fix/merge-categorias
+
+### 2026-11-25
+
+- **Correção do merge dos PRs #10 a #12:** a resolução de conflito do
+  PR #12 ficou com o lado da `dev` e apagou as rotas
+  `fluxo-de-caixa/por-categoria/` e `categorias/` (404; 22 testes
+  falhando na `dev`), as linhas delas no README e as seções
+  `feat/saldo-por-conta` e `feat/gastos-por-categoria` deste CHANGELOG.
+  Restauradas a partir dos commits originais dos PRs; o código das views
+  e dos testes tinha chegado inteiro.
