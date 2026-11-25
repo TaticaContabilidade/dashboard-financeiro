@@ -14,6 +14,7 @@ Valores em dinheiro saem sempre como texto com 2 casas ("1234.50"), igual
 aos campos do serializer: nunca float.
 """
 
+import re
 from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
@@ -81,6 +82,66 @@ def _periodo_do_parametro(params, padrao_de=None, padrao_ate=None) -> tuple[date
     return data_de, data_ate
 
 
+CODIGO_DE_CATEGORIA = re.compile(r'^\d+(\.\d+)*$')
+
+
+def _filtro_de_categoria(params) -> Q | None:
+    """`?categoria=2.03` ou `?categoria=2.03,1.01.02` (D-41). Um grupo traz
+    as subcategorias: compara pelo código exato ou pelo código seguido de
+    ponto, para `1.01` não pegar `1.010`."""
+    bruto = params.get('categoria')
+    if not bruto:
+        return None
+    codigos = [c.strip() for c in bruto.split(',') if c.strip()]
+    if not codigos or not all(CODIGO_DE_CATEGORIA.match(c) for c in codigos):
+        raise ValidationError({'categoria': 'Use códigos de categoria do Omie separados por vírgula (ex.: 2.03,1.01.02).'})
+    filtro = Q()
+    for codigo in codigos:
+        filtro |= Q(codigo_categoria=codigo) | Q(codigo_categoria__startswith=f'{codigo}.')
+    return filtro
+
+
+# --- consultas-base do fluxo (D-36, D-40) -------------------------------------
+# Usadas pelo fluxo de caixa e pelo fluxo por categoria, para os dois
+# seguirem exatamente as mesmas regras.
+
+
+def _lancamentos_realizados(empresa_id: int, data_de: date, data_ate: date, categoria: Q | None):
+    """Linhas de conta corrente pagas no período (o realizado)."""
+    qs = LancamentoConta.objects.da_empresa(empresa_id).filter(
+        data_pagamento__gte=data_de, data_pagamento__lte=data_ate,
+    )
+    return qs.filter(categoria) if categoria else qs
+
+
+def _titulos_em_aberto(empresa_id: int, data_de: date, data_ate: date, categoria: Q | None):
+    """Títulos não liquidados com vencimento no período, anotados com o que
+    falta pagar/receber (`em_aberto`)."""
+    qs = (
+        Titulo.objects.da_empresa(empresa_id)
+        .sem_cancelados()
+        .filter(
+            tipo__in=[Titulo.Tipo.PAGAR, Titulo.Tipo.RECEBER],
+            liquidado=False,
+            data_vencimento__gte=data_de,
+            data_vencimento__lte=data_ate,
+        )
+        .annotate(em_aberto=VALOR_EM_ABERTO)
+    )
+    return qs.filter(categoria) if categoria else qs
+
+
+def _previsoes(empresa_id: int, data_de: date, data_ate: date, categoria: Q | None):
+    """Previsões de contrato ainda válidas com vencimento no período."""
+    qs = (
+        Titulo.objects.da_empresa(empresa_id)
+        .sem_cancelados()
+        .previsoes_validas()
+        .filter(data_vencimento__gte=data_de, data_vencimento__lte=data_ate)
+    )
+    return qs.filter(categoria) if categoria else qs
+
+
 # --- contas a pagar / a receber (RF-01, RF-02) ---------------------------------
 
 
@@ -132,6 +193,10 @@ class _BaseTitulosView(EscopoEmpresaMixin, generics.ListAPIView):
             qs = qs.filter(data_vencimento__gte=data_de)
         if data_ate:
             qs = qs.filter(data_vencimento__lte=data_ate)
+
+        categoria = _filtro_de_categoria(params)
+        if categoria:
+            qs = qs.filter(categoria)
 
         situacao = params.get('situacao')
         if situacao:
@@ -212,8 +277,8 @@ class FluxoDeCaixaView(EscopoEmpresaMixin, APIView):
     - Previsto: o que falta pagar/receber dos títulos em aberto, por
       vencimento, mais as previsões de contrato ainda válidas (D-36).
 
-    Parâmetros: `data_de`, `data_ate` (padrão: o mês atual) e
-    `granularidade` (`dia`, `semana` ou `mes`; padrão `mes`).
+    Parâmetros: `data_de`, `data_ate` (padrão: o mês atual),
+    `granularidade` (`dia`, `semana` ou `mes`; padrão `mes`) e `categoria`.
     """
 
     def get(self, request: Request):
@@ -230,33 +295,22 @@ class FluxoDeCaixaView(EscopoEmpresaMixin, APIView):
             params, padrao_de=hoje.replace(day=1), padrao_ate=_fim_periodo(hoje, 'mes'),
         )
 
+        categoria = _filtro_de_categoria(params)
+
         realizado = (
-            LancamentoConta.objects.da_empresa(empresa_id)
-            .filter(data_pagamento__gte=data_de, data_pagamento__lte=data_ate)
+            _lancamentos_realizados(empresa_id, data_de, data_ate, categoria)
             .annotate(periodo=truncar('data_pagamento'))
             .values('periodo')
             .annotate(**_entradas_e_saidas('valor'))
         )
-
         previsto_titulos = (
-            Titulo.objects.da_empresa(empresa_id)
-            .sem_cancelados()
-            .filter(
-                tipo__in=[Titulo.Tipo.PAGAR, Titulo.Tipo.RECEBER],
-                liquidado=False,
-                data_vencimento__gte=data_de,
-                data_vencimento__lte=data_ate,
-            )
-            .annotate(periodo=truncar('data_vencimento'), em_aberto=VALOR_EM_ABERTO)
+            _titulos_em_aberto(empresa_id, data_de, data_ate, categoria)
+            .annotate(periodo=truncar('data_vencimento'))
             .values('periodo')
             .annotate(**_entradas_e_saidas('em_aberto'))
         )
-
         previsto_previsoes = (
-            Titulo.objects.da_empresa(empresa_id)
-            .sem_cancelados()
-            .previsoes_validas()
-            .filter(data_vencimento__gte=data_de, data_vencimento__lte=data_ate)
+            _previsoes(empresa_id, data_de, data_ate, categoria)
             .annotate(periodo=truncar('data_vencimento'))
             .values('periodo')
             .annotate(**_entradas_e_saidas('valor_titulo'))

@@ -309,3 +309,29 @@ Integração Omie).
   sem filtro de cancelados, valor do título no lugar do aberto, resumo sem
   `.order_by()`, dinheiro como float, nome do fornecedor de outra empresa,
   fluxo sem trava de empresa e data inválida ignorada quebram os testes.
+
+## Alterações branch feat/gastos-por-categoria
+
+### 2026-11-25
+
+- **Categorias e gastos por categoria** (backlog 4.9, D-41; wiki: API do
+  Dashboard):
+  - `GET fluxo-de-caixa/por-categoria/` (`tipo` = despesas/receitas,
+    `base` = realizado/previsto): grupos de categoria (`2.03`) somados, com
+    as subcategorias, total e percentual, do maior para o menor. Valor
+    líquido de estornos; transferências (`0.xx`) fora; categoria apagada do
+    Omie como "Categoria não cadastrada";
+  - `GET categorias/`: árvore de categorias para o seletor;
+  - filtro `?categoria=` em contas a pagar/receber e no fluxo de caixa (o
+    grupo traz as subcategorias; vários separados por vírgula; código fora
+    do formato é 400).
+- As consultas-base do fluxo (realizado, títulos em aberto, previsões)
+  viraram funções, usadas pelo fluxo e pelo fluxo por categoria, para os
+  dois seguirem as mesmas regras.
+- **Rateio não sincronizado (D-42):** um título rateado entra inteiro na
+  categoria do movimento. Desprezível nas despesas; nas receitas da Tática
+  afeta ~800 títulos, documentado na wiki.
+- Testes: 300 (23 novos). Sabotagens conferidas: descrições ou árvore de
+  outra empresa, estorno somado em vez de descontado, transferências dentro
+  das despesas, previsto sem as previsões, grupo `2.03` pegando `2.030` e
+  código de categoria inválido aceito quebram os testes.
